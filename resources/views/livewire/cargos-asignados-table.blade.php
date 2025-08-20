@@ -1,0 +1,8 @@
+<div>
+   
+    @if($local)
+        <div class="mt-12 border-t pt-8">
+            {{ $this->table }}
+        </div>
+    @endif
+</div>

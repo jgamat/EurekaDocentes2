@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Incluye variables y componentes del theme Filament */
+@import './filament/admin/theme.css';
+
+/* Ajustes mínimos para formularios standalone */
+/* Ajustes mínimos */
+.fi-body { @apply min-h-screen; }
+
