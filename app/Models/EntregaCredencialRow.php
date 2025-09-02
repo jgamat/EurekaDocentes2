@@ -12,6 +12,9 @@ class EntregaCredencialRow extends Model
     public $incrementing = false;
     public $timestamps = false;
     protected $guarded = [];
+    protected $casts = [
+        'monto' => 'decimal:2',
+    ];
 
     public function save(array $options = [])
     {

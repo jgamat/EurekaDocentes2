@@ -1,13 +1,24 @@
 <x-filament-panels::page>
-	<div class="space-y-6">
-		<div>
-			{{ $this->form }}
-		</div>
+	<form wire:submit="save" class="space-y-6">
+		{{ $this->form }}
 		@if($filters['local_id'] ?? false)
-			<div class="filament-box p-4 space-y-2">
-				<h2 class="text-lg font-semibold">Cargos Docentes (2,3,4) Asignados al Local</h2>
-				{{ $this->table }}
+			<div>
+				<x-filament::button type="submit">Guardar asignaciones</x-filament::button>
 			</div>
 		@endif
-	</div>
+	</form>
+
+	@if(($filters['local_id'] ?? false))
+		@if(($this->mostrarTabla && $this->hasDocentesAsignados()))
+			<div class="filament-box p-4 space-y-2 mt-6">
+				<h2 class="text-lg font-semibold">Cargos asignados al local</h2>
+				{{ $this->table }}
+			</div>
+		@else
+			<div class="filament-box p-4 space-y-2 mt-6">
+				<h2 class="text-lg font-semibold">Cargos asignados al local</h2>
+				<div class="text-sm text-gray-600">Aún no hay cargos docentes asignados para este local. Ingrese vacantes y guarde para verlos aquí.</div>
+			</div>
+		@endif
+	@endif
 </x-filament-panels::page>

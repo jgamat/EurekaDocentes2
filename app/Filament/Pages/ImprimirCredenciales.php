@@ -18,6 +18,7 @@ use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
 use Filament\Pages\Page;
 use Filament\Tables\Actions\BulkAction;
+use Filament\Tables\Actions\Action as TableAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\ToggleColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
@@ -46,6 +47,7 @@ class ImprimirCredenciales extends Page implements HasForms, HasTable
 
     // Estado del formulario reactivo
     public array $data = [];
+
     public function mount(): void
     {
         $this->form->fill();
@@ -69,7 +71,6 @@ class ImprimirCredenciales extends Page implements HasForms, HasTable
                     ->options(function(){
                         $pid = data_get($this->data,'proceso_id');
                         if(!$pid) return [];
-                        // La tabla real es 'procesofecha' y no tiene 'profec_vcNombre'; usamos fecha + activo como etiqueta.
                         return ProcesoFecha::where('pro_iCodigo',$pid)
                             ->orderBy('profec_dFecha')
                             ->get()
@@ -88,7 +89,7 @@ class ImprimirCredenciales extends Page implements HasForms, HasTable
                 Section::make('Ajustes de impresión')
                     ->collapsible()
                     ->collapsed()
-                    ->hidden() // Oculto temporalmente; mantiene valores por defecto internamente
+                    ->hidden()
                     ->description('Slot inicial y offsets milimétricos; se puede contraer para más espacio de tabla.')
                     ->schema([
                         Grid::make([
@@ -112,7 +113,6 @@ class ImprimirCredenciales extends Page implements HasForms, HasTable
             ])
             ->statePath('data');
     }
-    
     public function table(Table $table): Table
     {
         return $table
@@ -120,6 +120,21 @@ class ImprimirCredenciales extends Page implements HasForms, HasTable
             ->striped()
             ->searchable()
             ->searchPlaceholder('Buscar por código, DNI o nombre')
+            ->headerActions([
+                TableAction::make('imprimir_pendientes')
+                    ->label('Imprimir Pendientes')
+                    ->icon('heroicon-o-printer')
+                    ->visible(fn () => $this->isOnlyPendingActive())
+                    ->action(function(){
+                        $tipo = $this->getTipoSeleccionado();
+                        if (!$this->canUserPrintType($tipo)) {
+                            Notification::make()->title('Acción no permitida')->body('No tiene permisos para imprimir este tipo.')->danger()->send();
+                            return;
+                        }
+                        $records = $this->getPendingQuery()->get();
+                        return $this->handleImpresionForRecords($records);
+                    }),
+            ])
             ->columns([
                 // Docentes
                 TextColumn::make('docente.doc_vcCodigo')->label('Código')->sortable()->searchable()->visible(fn () => (int) (data_get($this->data,'tipo_personal_id') ?? 0) === 1)->extraAttributes(['class'=>'whitespace-nowrap w-20']),
@@ -134,14 +149,13 @@ class ImprimirCredenciales extends Page implements HasForms, HasTable
                 TextColumn::make('experienciaAdmision.maestro.expadmma_vcNombre')->label('Cargo')->wrap()->limit(35)->extraAttributes(['class'=>'max-w-[200px]']),
                 TextColumn::make('local.localesMaestro.locma_vcNombre')->label('Local')->wrap()->limit(25)->extraAttributes(['class'=>'max-w-[160px]']),
 
-                // Toggle por tipo
+                // Toggles por tipo
                 ToggleColumn::make('prodoc_iCredencial')
                     ->label('Impresa')
                     ->visible(fn () => (int) (data_get($this->data,'tipo_personal_id') ?? 0) === 1)
                     ->afterStateUpdated(function ($record, $state) {
                         if (!$this->canUserPrintType(1)) {
                             Notification::make()->title('Acción no permitida')->body('No puede marcar como impresa para este tipo.')->danger()->send();
-                            // revertir visualmente
                             $record->refresh();
                             return;
                         }
@@ -224,63 +238,10 @@ class ImprimirCredenciales extends Page implements HasForms, HasTable
                             Notification::make()->title('Acción no permitida')->body('No tiene permisos para imprimir este tipo.')->danger()->send();
                             return;
                         }
-                        if ($records->isEmpty()) {
-                            Notification::make()->title('Sin selección')->body('Seleccione al menos un registro.')->warning()->send();
-                            return;
+                        if ($this->isOnlyPendingActive()) {
+                            $records = $this->getPendingQuery()->get();
                         }
-
-                        // Desactivar Debugbar (si el paquete está presente) sin tocar el contenedor directamente
-                        if (class_exists('Barryvdh\\Debugbar\\Facades\\Debugbar')) {
-                            try { \Barryvdh\Debugbar\Facades\Debugbar::disable(); } catch (\Throwable $e) {}
-                        }
-
-                        $batchSize = 40; // credenciales máximas por lote
-                        $total = $records->count();
-                        $more = $total > $batchSize ? $total - $batchSize : 0;
-                        $processRecords = $more ? $records->take($batchSize) : $records;
-
-                        $items = [];
-                        foreach ($processRecords as $record) {
-                            $dni = null; $codigo = null; $nombres = null; $cargo = null; $local = null; $flagCol = null; $fechaCol = null; $credencialNumero = null;
-                            if ($record instanceof ProcesoDocente) { $dni = $record->docente?->doc_vcDni; $codigo = $record->docente?->doc_vcCodigo; $nombres = $record->docente?->nombre_completo; $flagCol='prodoc_iCredencial'; $fechaCol='prodoc_dtFechaImpresion'; $credencialNumero=$record->prodoc_iCodigo ?? null; }
-                            elseif ($record instanceof ProcesoAdministrativo) { $dni = $record->administrativo?->adm_vcDni; $codigo = $record->administrativo?->adm_vcCodigo; $nombres = $record->administrativo?->adm_vcNombres; $flagCol='proadm_iCredencial'; $fechaCol='proadm_dtFechaImpresion'; $credencialNumero=$record->proadm_iCodigo ?? null; }
-                            elseif ($record instanceof ProcesoAlumno) { $dni = $record->alumno?->alu_vcDni; $codigo = $record->alumno?->alu_vcCodigo; $nombres = $record->alumno?->nombre_completo; $flagCol='proalu_iCredencial'; $fechaCol='proalu_dtFechaImpresion'; $credencialNumero=$record->proalu_iCodigo ?? null; }
-                            $cargo = $record->experienciaAdmision?->maestro?->expadmma_vcNombre; $local = $record->local?->localesMaestro?->locma_vcNombre;
-                            $cargoLine1=$cargo; $cargoLine2=null; if($cargo){ $max=28; if(mb_strlen($cargo)>$max){ $words=preg_split('/\s+/u',$cargo); $l1=''; foreach($words as $w){ if(mb_strlen(trim($l1.' '.$w)) <= $max){ $l1=trim($l1.' '.$w);} else { $rest=trim(mb_substr($cargo, mb_strlen($l1))); $cargoLine1=$l1; $cargoLine2=$rest; break; } } } }
-                            $dniFile = $dni ? $dni.'.jpg' : null; $publicFoto = $dniFile && file_exists(public_path('storage/fotos/'.$dniFile)) ? public_path('storage/fotos/'.$dniFile) : public_path('storage/fotos/sinfoto.jpg');
-                            $items[] = [
-                                'dni'=>$dni,'codigo'=>$codigo,'nombres'=>$nombres,
-                                'nombres_line1'=>(function($name){ if(!$name)return null; $max=28; if(mb_strlen($name)<= $max) return $name; $words=preg_split('/\s+/u',$name); $l1=''; $rest=''; foreach($words as $w){ if(mb_strlen(trim($l1.' '.$w)) <= $max){ $l1=trim($l1.' '.$w);} else { $rest=trim(mb_substr($name, mb_strlen($l1))); break; } } return $l1 ?: mb_substr($name,0,$max);} )($nombres),
-                                'nombres_line2'=>(function($name){ if(!$name)return null; $max=28; if(mb_strlen($name)<= $max) return null; $words=preg_split('/\s+/u',$name); $l1=''; $rest=''; foreach($words as $w){ if(mb_strlen(trim($l1.' '.$w)) <= $max){ $l1=trim($l1.' '.$w);} else { $rest=trim(mb_substr($name, mb_strlen($l1))); break; } } return $rest ?: null;} )($nombres),
-                                'cargo'=>$cargo,'cargo_line1'=>$cargoLine1,'cargo_line2'=>$cargoLine2,'local'=>$local,
-                                'foto_path'=>$publicFoto,'flagCol'=>$flagCol,'fechaCol'=>$fechaCol,'credencial'=>$credencialNumero,'model'=>$record,
-                            ];
-                        }
-
-                        // inicio_slot
-                        $inicio = (int) (data_get($this->data,'inicio_slot') ?? 1); $inicio = $inicio<1?1:($inicio>4?4:$inicio);
-                        if ($inicio>1) { $placeholders = array_fill(0,$inicio-1,null); $items = array_merge($placeholders,$items); }
-                        $pages = array_chunk($items,4);
-                        $fecha = ProcesoFecha::find($procesoFechaId = (data_get($this->data,'proceso_fecha_id') ?? null));
-                        $anvPath = $fecha?->profec_vcUrlAnverso ? storage_path('app/public/'.$fecha->profec_vcUrlAnverso) : public_path('storage/templates/anverso.jpg');
-                        $revPath = $fecha?->profec_vcUrlReverso ? storage_path('app/public/'.$fecha->profec_vcUrlReverso) : public_path('storage/templates/reverso.jpg');
-                        $sessionKeyAnv='plantilla_anv_'.$procesoFechaId; $sessionKeyRev='plantilla_rev_'.$procesoFechaId;
-                        $anvB64=session()->get($sessionKeyAnv); $revB64=session()->get($sessionKeyRev);
-                        if(!$anvB64 && file_exists($anvPath)){ $anvB64=@base64_encode(file_get_contents($anvPath)); session()->put($sessionKeyAnv,$anvB64);} 
-                        if(!$revB64 && file_exists($revPath)){ $revB64=@base64_encode(file_get_contents($revPath)); session()->put($sessionKeyRev,$revB64);} 
-                        $html = view('credenciales.bulk',[ 'pages'=>$pages,'generado'=>now(),'anverso'=>$anvB64,'reverso'=>$revB64,'offsets'=>[
-                            'front'=>['x'=>(float)(data_get($this->data,'offset_x_front') ?? 0),'y'=>(float)(data_get($this->data,'offset_y_front') ?? 0)],
-                            'back'=>['x'=>(float)(data_get($this->data,'offset_x_back') ?? 0),'y'=>(float)(data_get($this->data,'offset_y_back') ?? 0)],
-                        ],'debug'=>(bool)(data_get($this->data,'debug_grid') ?? false),])->render();
-                        $pdf = Pdf::loadHTML($html)->setPaper('a4','portrait'); $pdfBinary = $pdf->output();
-
-                        // Actualizar sólo procesados
-                        $updated=0; foreach($items as $it){ if(!$it || !isset($it['model'])) continue; $it['model']->{$it['flagCol']}=true; $it['model']->{$it['fechaCol']}=now(); if(property_exists($it['model'],'user_idImpresion') || \Schema::hasColumn($it['model']->getTable(),'user_idImpresion')){ $it['model']->user_idImpresion=auth()->id(); } if(property_exists($it['model'],'IpImpresion') || \Schema::hasColumn($it['model']->getTable(),'IpImpresion')){ $it['model']->IpImpresion=request()->ip(); } $it['model']->save(); $updated++; }
-
-                        $this->dispatch('$refresh');
-                        $msg = 'Se imprimieron '.$updated.' credenciales.'; if($more){ $msg .= ' Quedan '.$more.' por imprimir (repita la acción).'; }
-                        Notification::make()->title('PDF generado')->body($msg)->success()->send();
-                        return response()->streamDownload(function() use ($pdfBinary){ echo $pdfBinary; }, 'credenciales_lote.pdf');
+                        return $this->handleImpresionForRecords($records);
                     }),
                 BulkAction::make('reimprimir')
                     ->label('Forzar Reimpresión')
@@ -459,6 +420,119 @@ class ImprimirCredenciales extends Page implements HasForms, HasTable
             $this->resetTableFiltersForm([]);
         }
         $this->dispatch('$refresh');
+    }
+
+    // Determina si el único filtro activo es "Solo Pendientes"
+    protected function isOnlyPendingActive(): bool
+    {
+        $filters = [];
+        if (property_exists($this, 'tableFilters')) {
+            $filters = $this->tableFilters ?? [];
+        } elseif (property_exists($this, 'tableFiltersFormData')) {
+            $filters = $this->tableFiltersFormData ?? [];
+        }
+        if (!is_array($filters)) $filters = [];
+
+        // Normaliza claves con valor lleno
+        $active = [];
+        foreach ($filters as $key => $val) {
+            if (is_array($val)) {
+                if (array_filter($val, fn ($v) => $v !== null && $v !== '' && $v !== false) !== []) {
+                    $active[] = $key;
+                }
+            } elseif ($val) {
+                $active[] = $key;
+            }
+        }
+        // true si solo está activo 'solo_pendientes'
+        return count($active) === 1 && in_array('solo_pendientes', $active, true);
+    }
+
+    // Construye una consulta que devuelve TODOS los pendientes con el contexto actual (proceso/fecha/tipo) y respetando Local/Cargo si están activos
+    protected function getPendingQuery(): Builder
+    {
+        $base = $this->buildBaseQuery();
+        $tipo = $this->getTipoSeleccionado();
+
+        // Aplica condición de pendientes
+        $base = match ($tipo) {
+            1 => $base->where(function ($q) { $q->whereNull('prodoc_iCredencial')->orWhere('prodoc_iCredencial', false); }),
+            2 => $base->where(function ($q) { $q->whereNull('proadm_iCredencial')->orWhere('proadm_iCredencial', false); }),
+            3 => $base->where(function ($q) { $q->whereNull('proalu_iCredencial')->orWhere('proalu_iCredencial', false); }),
+            default => $base,
+        };
+
+        // Si además el usuario dejó activos Local o Cargo, respetarlos también
+        $filters = [];
+        if (property_exists($this, 'tableFiltersFormData')) {
+            $filters = $this->tableFiltersFormData ?? [];
+        }
+        if (is_array($filters)) {
+            $loc = data_get($filters, 'local_filter.loc_iCodigo');
+            if ($loc) { $base->where('loc_iCodigo', $loc); }
+            $cargo = data_get($filters, 'cargo_filter.expadm_iCodigo');
+            if ($cargo) { $base->where('expadm_iCodigo', $cargo); }
+        }
+        return $base;
+    }
+
+    // Extrae la lógica de impresión para reutilizar en acciones
+    protected function handleImpresionForRecords(Collection $records)
+    {
+        if ($records->isEmpty()) {
+            Notification::make()->title('Sin selección')->body('Seleccione al menos un registro.')->warning()->send();
+            return null;
+        }
+
+        if (class_exists('Barryvdh\\Debugbar\\Facades\\Debugbar')) {
+            try { \Barryvdh\Debugbar\Facades\Debugbar::disable(); } catch (\Throwable $e) {}
+        }
+
+        $batchSize = 40;
+        $total = $records->count();
+        $more = $total > $batchSize ? $total - $batchSize : 0;
+        $processRecords = $more ? $records->take($batchSize) : $records;
+
+        $items = [];
+        foreach ($processRecords as $record) {
+            $dni = null; $codigo = null; $nombres = null; $cargo = null; $local = null; $flagCol = null; $fechaCol = null; $credencialNumero = null;
+            if ($record instanceof ProcesoDocente) { $dni = $record->docente?->doc_vcDni; $codigo = $record->docente?->doc_vcCodigo; $nombres = $record->docente?->nombre_completo; $flagCol='prodoc_iCredencial'; $fechaCol='prodoc_dtFechaImpresion'; $credencialNumero=$record->prodoc_iCodigo ?? null; }
+            elseif ($record instanceof ProcesoAdministrativo) { $dni = $record->administrativo?->adm_vcDni; $codigo = $record->administrativo?->adm_vcCodigo; $nombres = $record->administrativo?->adm_vcNombres; $flagCol='proadm_iCredencial'; $fechaCol='proadm_dtFechaImpresion'; $credencialNumero=$record->proadm_iCodigo ?? null; }
+            elseif ($record instanceof ProcesoAlumno) { $dni = $record->alumno?->alu_vcDni; $codigo = $record->alumno?->alu_vcCodigo; $nombres = $record->alumno?->nombre_completo; $flagCol='proalu_iCredencial'; $fechaCol='proalu_dtFechaImpresion'; $credencialNumero=$record->proalu_iCodigo ?? null; }
+            $cargo = $record->experienciaAdmision?->maestro?->expadmma_vcNombre; $local = $record->local?->localesMaestro?->locma_vcNombre;
+            $cargoLine1=$cargo; $cargoLine2=null; if($cargo){ $max=28; if(mb_strlen($cargo)>$max){ $words=preg_split('/\s+/u',$cargo); $l1=''; foreach($words as $w){ if(mb_strlen(trim($l1.' '.$w)) <= $max){ $l1=trim($l1.' '.$w);} else { $rest=trim(mb_substr($cargo, mb_strlen($l1))); $cargoLine1=$l1; $cargoLine2=$rest; break; } } } }
+            $dniFile = $dni ? $dni.'.jpg' : null; $publicFoto = $dniFile && file_exists(public_path('storage/fotos/'.$dniFile)) ? public_path('storage/fotos/'.$dniFile) : public_path('storage/fotos/sinfoto.jpg');
+            $items[] = [
+                'dni'=>$dni,'codigo'=>$codigo,'nombres'=>$nombres,
+                'nombres_line1'=>(function($name){ if(!$name)return null; $max=28; if(mb_strlen($name)<= $max) return $name; $words=preg_split('/\s+/u',$name); $l1=''; $rest=''; foreach($words as $w){ if(mb_strlen(trim($l1.' '.$w)) <= $max){ $l1=trim($l1.' '.$w);} else { $rest=trim(mb_substr($name, mb_strlen($l1))); break; } } return $l1 ?: mb_substr($name,0,$max);} )($nombres),
+                'nombres_line2'=>(function($name){ if(!$name)return null; $max=28; if(mb_strlen($name)<= $max) return null; $words=preg_split('/\s+/u',$name); $l1=''; $rest=''; foreach($words as $w){ if(mb_strlen(trim($l1.' '.$w)) <= $max){ $l1=trim($l1.' '.$w);} else { $rest=trim(mb_substr($name, mb_strlen($l1))); break; } } return $rest ?: null;} )($nombres),
+                'cargo'=>$cargo,'cargo_line1'=>$cargoLine1,'cargo_line2'=>$cargoLine2,'local'=>$local,
+                'foto_path'=>$publicFoto,'flagCol'=>$flagCol,'fechaCol'=>$fechaCol,'credencial'=>$credencialNumero,'model'=>$record,
+            ];
+        }
+
+        $inicio = (int) (data_get($this->data,'inicio_slot') ?? 1); $inicio = $inicio<1?1:($inicio>4?4:$inicio);
+        if ($inicio>1) { $placeholders = array_fill(0,$inicio-1,null); $items = array_merge($placeholders,$items); }
+        $pages = array_chunk($items,4);
+        $fecha = ProcesoFecha::find($procesoFechaId = (data_get($this->data,'proceso_fecha_id') ?? null));
+        $anvPath = $fecha?->profec_vcUrlAnverso ? storage_path('app/public/'.$fecha->profec_vcUrlAnverso) : public_path('storage/templates/anverso.jpg');
+        $revPath = $fecha?->profec_vcUrlReverso ? storage_path('app/public/'.$fecha->profec_vcUrlReverso) : public_path('storage/templates/reverso.jpg');
+        $sessionKeyAnv='plantilla_anv_'.$procesoFechaId; $sessionKeyRev='plantilla_rev_'.$procesoFechaId;
+        $anvB64=session()->get($sessionKeyAnv); $revB64=session()->get($sessionKeyRev);
+        if(!$anvB64 && file_exists($anvPath)){ $anvB64=@base64_encode(file_get_contents($anvPath)); session()->put($sessionKeyAnv,$anvB64);} 
+        if(!$revB64 && file_exists($revPath)){ $revB64=@base64_encode(file_get_contents($revPath)); session()->put($sessionKeyRev,$revB64);} 
+        $html = view('credenciales.bulk',[ 'pages'=>$pages,'generado'=>now(),'anverso'=>$anvB64,'reverso'=>$revB64,'offsets'=>[
+            'front'=>['x'=>(float)(data_get($this->data,'offset_x_front') ?? 0),'y'=>(float)(data_get($this->data,'offset_y_front') ?? 0)],
+            'back'=>['x'=>(float)(data_get($this->data,'offset_x_back') ?? 0),'y'=>(float)(data_get($this->data,'offset_y_back') ?? 0)],
+        ],'debug'=>(bool)(data_get($this->data,'debug_grid') ?? false),])->render();
+        $pdf = Pdf::loadHTML($html)->setPaper('a4','portrait'); $pdfBinary = $pdf->output();
+
+        $updated=0; foreach($items as $it){ if(!$it || !isset($it['model'])) continue; $it['model']->{$it['flagCol']}=true; $it['model']->{$it['fechaCol']}=now(); if(property_exists($it['model'],'user_idImpresion') || \Schema::hasColumn($it['model']->getTable(),'user_idImpresion')){ $it['model']->user_idImpresion=auth()->id(); } if(property_exists($it['model'],'IpImpresion') || \Schema::hasColumn($it['model']->getTable(),'IpImpresion')){ $it['model']->IpImpresion=request()->ip(); } $it['model']->save(); $updated++; }
+
+        $this->dispatch('$refresh');
+        $msg = 'Se imprimieron '.$updated.' credenciales.'; if($more){ $msg .= ' Quedan '.$more.' por imprimir (repita la acción).'; }
+        Notification::make()->title('PDF generado')->body($msg)->success()->send();
+        return response()->streamDownload(function() use ($pdfBinary){ echo $pdfBinary; }, 'credenciales_lote.pdf');
     }
 
     public function clearPlantillaCache(): void

@@ -10,4 +10,9 @@ class Tipo extends Model
     protected $primaryKey = 'tipo_iCodigo';
 
     public $incrementing = true;
+
+    protected $fillable = [
+        'tipo_vcNombrePlanilla',
+        
+    ];
 }

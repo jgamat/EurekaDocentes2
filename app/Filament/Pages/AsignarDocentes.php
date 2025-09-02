@@ -5,7 +5,8 @@ namespace App\Filament\Pages;
 use App\Models\Docente;
 use App\Models\LocalCargo;
 use App\Models\Locales;
-use App\Models\ExperienciaAdminision;
+use App\Models\ExperienciaAdmision;
+use App\Models\ExperienciaAdmisionMaestro;
 use App\Models\ProcesoDocente;
 use App\Models\ProcesoFecha;
 use Filament\Forms\Components\Select;
@@ -74,51 +75,39 @@ class AsignarDocentes extends Page implements HasForms
                 Select::make('experiencia_admision_id')
                     ->label('3. Seleccione el Cargo')
                     ->options(function (callable $get): Collection {
+                        $fechaId = $get('proceso_fecha_id');
                         $localId = $get('local_id');
-                        if (!$localId) {
+                        if (!$fechaId || !$localId) {
                             return collect();
                         }
-                        $local = Locales::find($localId);
-                        if (!$local) {
-                            return collect();
-                        }
+
+                        // Roles permitidos para filtrar por tipo de cargo (maestro)
                         $user = auth()->user();
-                            $fechaId = $get('proceso_fecha_id');
-                            // Aseguramos que existan instancias ExperienciaAdmision para TODOS los maestros permitidos.
-                            $allowedMaestroQuery = ExperienciaAdmisionMaestro::query();
-                            $codigos = [2,3,4];
-                            if($user){
-                                if ($user->hasRole('DocentesLocales')) {
-                                    $allowedMaestroQuery->whereIn('expadmma_iCodigo',$codigos);
-                                } elseif ($user->hasAnyRole(['Info','Economia','Economía'])) {
-                                    // todos (sin filtro)
-                                } else {
-                                    $allowedMaestroQuery->whereNotIn('expadmma_iCodigo',$codigos);
-                                }
+                        $allowed = ExperienciaAdmisionMaestro::query();
+                        $docentesLocalesCods = [2, 3, 4];
+                        if ($user) {
+                            if ($user->hasAnyRole(['DocentesLocales', 'Oprad'])) {
+                                $allowed->whereIn('expadmma_iCodigo', $docentesLocalesCods);
+                            } elseif ($user->hasAnyRole(['Info', 'Economia', 'super_admin'])) {
+                                // sin filtro
+                            } else {
+                                $allowed->whereNotIn('expadmma_iCodigo', $docentesLocalesCods);
                             }
-                            $maestros = $allowedMaestroQuery->get();
+                        }
+                        $allowedIds = $allowed->pluck('expadmma_iCodigo');
 
-                            if($fechaId){
-                                foreach($maestros as $m){
-                                    // Crear instancia por fecha si no existe
-                                    $inst = ExperienciaAdmision::firstOrCreate([
-                                        'profec_iCodigo' => $fechaId,
-                                        'expadmma_iCodigo' => $m->expadmma_iCodigo,
-                                    ]);
-                                    // Asegurar vínculo con local
-                                    if($local){
-                                        $local->experienciaAdmision()->syncWithoutDetaching([
-                                            $inst->expadm_iCodigo => [ 'loccar_iVacante' => $local->experienciaAdmision()->where('experienciaadmision.expadm_iCodigo',$inst->expadm_iCodigo)->first()->pivot->loccar_iVacante ?? 0 ]
-                                        ]);
-                                    }
-                                }
-                            }
+                        // Solo cargos ya vinculados al local seleccionado y a la fecha seleccionada (vía localcargo)
+                        $cargos = \App\Models\ExperienciaAdmision::query()
+                            ->select('experienciaadmision.expadm_iCodigo', 'em.expadmma_vcNombre')
+                            ->join('localcargo', 'localcargo.expadm_iCodigo', '=', 'experienciaadmision.expadm_iCodigo')
+                            ->join('experienciaadmisionMaestro as em', 'em.expadmma_iCodigo', '=', 'experienciaadmision.expadmma_iCodigo')
+                            ->where('localcargo.loc_iCodigo', $localId)
+                            ->where('experienciaadmision.profec_iCodigo', $fechaId)
+                            ->whereIn('experienciaadmision.expadmma_iCodigo', $allowedIds)
+                            ->orderBy('em.expadmma_vcNombre')
+                            ->get();
 
-                            // Ahora construir el query sobre instancias ligadas al local filtradas por maestros permitidos
-                            $query = $local->experienciaAdmision()->whereHas('maestro', function($q) use ($maestros){
-                                $q->whereIn('expadmma_iCodigo', $maestros->pluck('expadmma_iCodigo'));
-                            });
-                        return $query->with('maestro')->get()->pluck('maestro.expadmma_vcNombre','expadm_iCodigo');
+                        return $cargos->pluck('expadmma_vcNombre', 'expadm_iCodigo');
                     })
                     ->searchable()
                     ->preload() // Mostrar todas las opciones sin necesidad de escribir
