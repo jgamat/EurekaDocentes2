@@ -24,6 +24,7 @@ use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Tables\Actions\EditAction as TableEditAction;
 use Filament\Tables\Actions\Action as TableAction;
+use Illuminate\Support\Facades\DB;
 
 class AsignarCargosALocalDocentes extends Page implements HasForms, HasTable
 {
@@ -67,61 +68,72 @@ class AsignarCargosALocalDocentes extends Page implements HasForms, HasTable
                 Select::make('proceso_id')
                     ->label('Proceso Abierto')
                     ->options(fn()=> \App\Models\Proceso::where('pro_iAbierto', true)->orderBy('pro_vcNombre')->pluck('pro_vcNombre','pro_iCodigo'))
+                    ->rule('integer')
+                    ->rule('exists:proceso,pro_iCodigo')
                     ->reactive()
                     ->afterStateUpdated(function($state){
-                        $this->filters['proceso_id']=$state; $this->filters['proceso_fecha_id']=null; $this->filters['local_id']=null; $this->mostrarTabla = false; $this->form->fill($this->filters);
+                        $this->filters['proceso_id']=(int)$state; $this->filters['proceso_fecha_id']=null; $this->filters['local_id']=null; $this->mostrarTabla = false; $this->form->fill($this->filters);
                     })
                     ->required(),
                 Select::make('proceso_fecha_id')
                     ->label('Fecha Activa')
                     ->options(function(){
-                        $pid = $this->filters['proceso_id'];
+                        $pid = (int)($this->filters['proceso_id'] ?? 0);
                         if(!$pid) return [];
                         return \App\Models\ProcesoFecha::where('pro_iCodigo',$pid)
                             ->where('profec_iActivo', true)
                             ->orderBy('profec_dFecha')
                             ->pluck('profec_dFecha','profec_iCodigo');
                     })
+                    ->rule('integer')
+                    ->rule('exists:procesofecha,profec_iCodigo')
                     ->reactive()
                     ->afterStateUpdated(function($state){
-                        $this->filters['proceso_fecha_id']=$state; $this->filters['local_id']=null; $this->mostrarTabla = false; $this->form->fill($this->filters);
+                        $this->filters['proceso_fecha_id']=(int)$state; $this->filters['local_id']=null; $this->mostrarTabla = false; $this->form->fill($this->filters);
                     })
                     ->required(),
                 Select::make('local_id')
                     ->label('Local Asignado')
                     ->options(function(){
-                        $fecha = $this->filters['proceso_fecha_id'];
+                        $fecha = (int)($this->filters['proceso_fecha_id'] ?? 0);
                         if(!$fecha) return [];
                         return Locales::where('profec_iCodigo',$fecha)->with('localesMaestro','procesoFecha')
                             ->get()->mapWithKeys(fn($l)=>[$l->loc_iCodigo => ($l->localesMaestro->locma_vcNombre ?? 'N/A')]);
                     })
+                    ->rule('integer')
+                    ->rule('exists:locales,loc_iCodigo')
                     ->reactive()
                     ->afterStateUpdated(function($state){
-                        $this->filters['local_id']=$state; $this->mostrarTabla = false; $this->prefillVacantes();
+                        $this->filters['local_id']=(int)$state; $this->mostrarTabla = false; $this->prefillVacantes();
+                        // Si ya existen los cargos requeridos, mostrar tabla directamente
+                        if ($this->allDocenteCargosPresent()) {
+                            $this->mostrarTabla = true;
+                        }
+                        $this->form->fill($this->filters);
                     })
                     ->required(),
 
                 Section::make('Cargos a asignar (Docentes)')
                     ->description('Ingrese el número de vacantes para cada cargo y guarde las asignaciones.')
-                    ->visible(fn()=> filled($this->filters['local_id']))
+                    ->visible(fn()=> filled($this->filters['local_id']) && !$this->allDocenteCargosPresent())
                     ->schema([
                         Grid::make(2)->schema([
                             Placeholder::make('cargo_2')
                                 ->label('Cargo')
                                 ->content(fn()=> $this->cargoNombre(2)),
-                            TextInput::make('vacantes.2')->label('Vacantes')->numeric()->minValue(0)->default(0),
+                            TextInput::make('vacantes.2')->label('Vacantes')->numeric()->rule('integer')->minValue(0)->default(0),
                         ]),
                         Grid::make(2)->schema([
                             Placeholder::make('cargo_3')
                                 ->label('Cargo')
                                 ->content(fn()=> $this->cargoNombre(3)),
-                            TextInput::make('vacantes.3')->label('Vacantes')->numeric()->minValue(0)->default(0),
+                            TextInput::make('vacantes.3')->label('Vacantes')->numeric()->rule('integer')->minValue(0)->default(0),
                         ]),
                         Grid::make(2)->schema([
                             Placeholder::make('cargo_4')
                                 ->label('Cargo')
                                 ->content(fn()=> $this->cargoNombre(4)),
-                            TextInput::make('vacantes.4')->label('Vacantes')->numeric()->minValue(0)->default(0),
+                            TextInput::make('vacantes.4')->label('Vacantes')->numeric()->rule('integer')->minValue(0)->default(0),
                         ]),
                     ]),
             ])
@@ -131,6 +143,25 @@ class AsignarCargosALocalDocentes extends Page implements HasForms, HasTable
     protected function docenteCargoMaestros(): array
     {
         return [2,3,4];
+    }
+
+    // Retorna true si el local/fecha ya tiene asignados todos los cargos docentes requeridos (2,3,4)
+    protected function allDocenteCargosPresent(): bool
+    {
+        $localId = $this->filters['local_id'] ?? null;
+        $fechaId = $this->filters['proceso_fecha_id'] ?? null;
+        if(!$localId || !$fechaId) return false;
+        try {
+            $present = $this->getTableQuery()
+                ->clone()
+                ->pluck('experienciaadmision.expadmma_iCodigo')
+                ->unique()
+                ->values();
+            $needed = collect($this->docenteCargoMaestros());
+            return $needed->diff($present)->isEmpty();
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 
     protected function autoEnsureDocenteCargos(): void
@@ -182,14 +213,14 @@ class AsignarCargosALocalDocentes extends Page implements HasForms, HasTable
 
     protected function getTableQuery(): Builder
     {
-        $localId = $this->filters['local_id'];
-        $fechaId = $this->filters['proceso_fecha_id'];
+        $localId = (int)($this->filters['local_id'] ?? 0);
+        $fechaId = (int)($this->filters['proceso_fecha_id'] ?? 0);
         $codigos = $this->docenteCargoMaestros();
         return ExperienciaAdmision::query()
             ->select('experienciaadmision.*','localcargo.loccar_iVacante as pivot_loccar_iVacante','localcargo.loccar_iOcupado as pivot_loccar_iOcupado')
             ->join('localcargo','localcargo.expadm_iCodigo','=','experienciaadmision.expadm_iCodigo')
-            ->where('localcargo.loc_iCodigo',$localId ?? 0)
-            ->where('experienciaadmision.profec_iCodigo',$fechaId ?? 0)
+            ->where('localcargo.loc_iCodigo',$localId)
+            ->where('experienciaadmision.profec_iCodigo',$fechaId)
             ->whereIn('experienciaadmision.expadmma_iCodigo',$codigos);
     }
 
@@ -261,32 +292,37 @@ class AsignarCargosALocalDocentes extends Page implements HasForms, HasTable
 
     public function save(): void
     {
-        $localId = $this->filters['local_id'] ?? null;
-        $fechaId = $this->filters['proceso_fecha_id'] ?? null;
+        // Validación server-side del formulario
+        $this->form->validate();
+
+        $localId = (int)($this->filters['local_id'] ?? 0);
+        $fechaId = (int)($this->filters['proceso_fecha_id'] ?? 0);
         if(!$localId || !$fechaId){
             Notification::make()->title('Selecciona local y fecha')->danger()->send();
             return;
         }
-        $local = Locales::find($localId);
-        if(!$local){ return; }
-        $sync = [];
-        foreach($this->docenteCargoMaestros() as $maestroId){
-            $inst = ExperienciaAdmision::firstOrCreate([
-                'profec_iCodigo' => $fechaId,
-                'expadmma_iCodigo' => $maestroId,
-            ]);
-            $vac = (int)($this->filters['vacantes'][(string)$maestroId] ?? 0);
-            $pivotRow = $local->experienciaAdmision()->where('experienciaadmision.expadm_iCodigo',$inst->expadm_iCodigo)->first();
-            $ocupados = (int)($pivotRow?->pivot?->loccar_iOcupado ?? 0);
-            if($vac < $ocupados){
-                Notification::make()->title('No permitido')->body("Las vacantes ({$vac}) no pueden ser menores que ocupados ({$ocupados}).")->danger()->send();
-                continue;
+        DB::transaction(function() use ($localId, $fechaId) {
+            $local = Locales::find($localId);
+            if(!$local){ return; }
+            $sync = [];
+            foreach($this->docenteCargoMaestros() as $maestroId){
+                $inst = ExperienciaAdmision::firstOrCreate([
+                    'profec_iCodigo' => $fechaId,
+                    'expadmma_iCodigo' => $maestroId,
+                ]);
+                $vac = (int)($this->filters['vacantes'][(string)$maestroId] ?? 0);
+                $pivotRow = $local->experienciaAdmision()->where('experienciaadmision.expadm_iCodigo',$inst->expadm_iCodigo)->first();
+                $ocupados = (int)($pivotRow?->pivot?->loccar_iOcupado ?? 0);
+                if($vac < $ocupados){
+                    Notification::make()->title('No permitido')->body("Las vacantes ({$vac}) no pueden ser menores que ocupados ({$ocupados}).")->danger()->send();
+                    continue;
+                }
+                $sync[$inst->expadm_iCodigo] = ['loccar_iVacante' => $vac];
             }
-            $sync[$inst->expadm_iCodigo] = ['loccar_iVacante' => $vac];
-        }
-        if(!empty($sync)){
-            $local->experienciaAdmision()->syncWithoutDetaching($sync);
-        }
+            if(!empty($sync)){
+                $local->experienciaAdmision()->syncWithoutDetaching($sync);
+            }
+        });
         Notification::make()->title('Asignaciones guardadas')->success()->send();
         $this->prefillVacantes();
     // Mostrar la tabla solo después del primer guardado en esta sesión

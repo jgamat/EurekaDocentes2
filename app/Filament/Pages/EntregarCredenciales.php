@@ -235,6 +235,8 @@ class EntregarCredenciales extends Page implements HasForms, HasTable
     {
         $base = $this->baseUnionQuery();
         if(!$this->filters['proceso_fecha_id']) return [];
+        $allowed = ['loc_iCodigo','expadm_iCodigo'];
+        if(!in_array($column, $allowed, true)) return [];
         return $base->clone()->select($column)->distinct()->orderBy($column)->pluck($column,$column)->toArray();
     }
 

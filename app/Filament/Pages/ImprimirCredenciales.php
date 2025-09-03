@@ -59,7 +59,7 @@ class ImprimirCredenciales extends Page implements HasForms, HasTable
             ->schema([
                 Select::make('proceso_id')
                     ->label('Proceso')
-                    ->options(Proceso::query()->orderBy('pro_vcNombre')->pluck('pro_vcNombre','pro_iCodigo'))
+                    ->options(Proceso::query()->where('pro_iAbierto', true)->orderBy('pro_vcNombre')->pluck('pro_vcNombre','pro_iCodigo'))
                     ->searchable()
                     ->reactive()
                     ->afterStateUpdated(function(){
@@ -72,9 +72,10 @@ class ImprimirCredenciales extends Page implements HasForms, HasTable
                         $pid = data_get($this->data,'proceso_id');
                         if(!$pid) return [];
                         return ProcesoFecha::where('pro_iCodigo',$pid)
+                            ->where('profec_iActivo', true)
                             ->orderBy('profec_dFecha')
                             ->get()
-                            ->mapWithKeys(fn($f)=> [ $f->profec_iCodigo => ($f->profec_dFecha ? $f->profec_dFecha : ('ID '.$f->profec_iCodigo)) . ($f->profec_iActivo ? ' (Activa)' : '') ])
+                            ->mapWithKeys(fn($f)=> [ $f->profec_iCodigo => ($f->profec_dFecha ? $f->profec_dFecha : ('ID '.$f->profec_iCodigo)) ])
                             ->toArray();
                     })
                     ->reactive()

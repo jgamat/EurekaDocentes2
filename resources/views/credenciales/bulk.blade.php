@@ -63,7 +63,7 @@ body { margin:0; font-family: DejaVu Sans, sans-serif; }
                 $cargoTop2 = $cargoTop1 + 4; // segunda línea cargo
                 // Local debajo de cargo antes de foto (bajarlo unos mm adicionales)
                 $localTopCalculated = !empty($p['cargo_line2']) ? ($cargoTop2 + 19) : ($cargoTop1 + 23);
-                $fotoTop = 43; $fotoLeft = 54; // posición foto
+                $fotoTop = 43; $fotoLeft = 54.5; // posición foto
                 if ($localTopCalculated + 3 > $fotoTop) {
                     $localTopCalculated = $fotoTop - 4; // evita solape
                 }
@@ -95,7 +95,7 @@ body { margin:0; font-family: DejaVu Sans, sans-serif; }
                         try { $rawFoto = @file_get_contents($p['foto_path']); } catch (\Exception $e) { $rawFoto = null; }
                     @endphp
                     @if($rawFoto)
-                        <img class="foto" style="top:{{ $fotoTop ?? 43 }}mm; left:{{ $fotoLeft ?? 54 }}mm;" src="data:image/jpeg;base64,{{ base64_encode($rawFoto) }}" />
+                        <img class="foto" style="top:{{ $fotoTop ?? 43 }}mm; left:{{ $fotoLeft ?? 54.5 }}mm;" src="data:image/jpeg;base64,{{ base64_encode($rawFoto) }}" />
                     @endif
                 @endif
             </div>

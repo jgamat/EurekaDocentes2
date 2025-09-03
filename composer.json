@@ -26,6 +26,7 @@
         "setasign/fpdf": "1.8",
         "setasign/fpdi": "2.5",
         "swisnl/filament-backgrounds": "^1.1",
+        "tapp/filament-authentication-log": "4.0",
         "z3d0x/filament-logger": "^0.8.0"
     },
     "require-dev": {

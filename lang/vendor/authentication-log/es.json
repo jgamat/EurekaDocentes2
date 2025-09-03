@@ -1,0 +1,9 @@
+{
+    "events": {
+        "login": "Inició sesión",
+        "failed": "Intento de inicio de sesión fallido",
+        "logout": "Cerró sesión",
+        "logout-other": "Cerró sesión en otros dispositivos",
+        "lockout": "Bloqueado después de demasiados intentos de inicio de sesión"
+    }
+}

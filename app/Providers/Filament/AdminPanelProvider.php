@@ -23,6 +23,9 @@ use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Jeffgreco13\FilamentBreezy\BreezyCore;
 use Swis\Filament\Backgrounds\FilamentBackgroundsPlugin;
+use App\Http\Middleware\RateLimitLogin;
+use App\Filament\Pages\Auth\Login as CustomLogin;
+use Tapp\FilamentAuthenticationLog\FilamentAuthenticationLogPlugin;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -34,7 +37,7 @@ class AdminPanelProvider extends PanelProvider
            
             ->path('admin')
            // ->passwordReset()
-            ->login()
+            ->login(CustomLogin::class)
             ->colors([
                 'primary' => Color::Amber,
             ])
@@ -83,6 +86,7 @@ class AdminPanelProvider extends PanelProvider
                 AddQueuedCookiesToResponse::class,
                 StartSession::class,
                 AuthenticateSession::class,
+                RateLimitLogin::class,
                 ShareErrorsFromSession::class,
                 VerifyCsrfToken::class,
                 SubstituteBindings::class,
@@ -96,6 +100,7 @@ class AdminPanelProvider extends PanelProvider
                 BreezyCore::make()
                     ->myProfile(shouldRegisterUserMenu: true),
                 FilamentBackgroundsPlugin::make(),
+                FilamentAuthenticationLogPlugin::make(),
                 ThemesPlugin::make(),
             ])
             ->authMiddleware([

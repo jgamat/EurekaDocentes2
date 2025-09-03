@@ -350,6 +350,12 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
     {
         $base = $this->baseUnionQuery();
         if (!($this->filters['proceso_fecha_id'] ?? null) || !($this->filters['tipo_id'] ?? null)) return [];
+        // Whitelist allowed columns to avoid dynamic order/selection misuse
+        $allowedId = ['expadm_iCodigo', 'loc_iCodigo'];
+        $allowedLabel = ['cargo_nombre', 'local_nombre'];
+        if (!in_array($idColumn, $allowedId, true) || !in_array($labelColumn, $allowedLabel, true)) {
+            return [];
+        }
         return $base->clone()
             ->select([$idColumn, $labelColumn])
             ->distinct()
