@@ -1,7 +1,22 @@
-<x-filament-panels::page>
+<x-filament-panels::page class="impr-cred-page">
+
+    <style>
+        /* Desplazamiento aplicado al wrapper del componente de página */
+        .impr-cred-page { margin-left: 1rem !important; }
+        @media (min-width: 640px) { .impr-cred-page { margin-left: 1.25rem !important; } }
+        @media (min-width: 768px) { .impr-cred-page { margin-left: 1.5rem !important; } }
+        @media (min-width: 1024px) { .impr-cred-page { margin-left: 2rem !important; } }
+        @media (min-width: 1280px) { .impr-cred-page { margin-left: 2.5rem !important; } }
+        @media (min-width: 1536px) { .impr-cred-page { margin-left: 3rem !important; } }
+    /* Alinea el header/título con el contenido desplazado */
+    .impr-cred-page .fi-header { margin-left: 48px !important; }
+    </style>
+
+    <!-- Wrapper para desplazar el contenido a la derecha (solo en esta página) -->
+    <div id="impr-cred-root" class="w-full" style="margin-left: 48px;">
 
     <!-- Barra de acciones superior -->
-    <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between relative z-0">
         <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Impresión de Credenciales</h2>
         <div class="flex flex-wrap items-center gap-2">
             <button type="button" wire:click="clearPlantillaCache" wire:loading.attr="disabled" class="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-xs font-medium px-3 py-1.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 disabled:opacity-50">
@@ -16,7 +31,7 @@
     </div>
 
     {{-- Panel de Filtros --}}
-    <div class="p-4 mb-4 bg-white rounded-xl shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-800 dark:ring-white/10">
+    <div class="p-4 mb-4 bg-white rounded-xl shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-800 dark:ring-white/10 relative z-0">
         {{ $this->form }}
     </div>
 
@@ -30,11 +45,25 @@
         $revPath = $fecha?->profec_vcUrlReverso ? public_path('storage/'.$fecha->profec_vcUrlReverso) : (file_exists(public_path('storage/templates/reverso.jpg')) ? public_path('storage/templates/reverso.jpg') : null);
         $anvInfo = $anvPath && file_exists($anvPath) ? @getimagesize($anvPath) : null;
         $revInfo = $revPath && file_exists($revPath) ? @getimagesize($revPath) : null;
-        $minW = 2480; $minH = 3508;
+        $minW = 1241; $minH = 1754;
     @endphp
     @php $hasTemplates = (bool) ($anv || $rev); @endphp
-    <div class="mb-6 p-4 bg-gradient-to-b from-white to-slate-50 dark:from-gray-800 dark:to-gray-900 rounded-xl shadow-sm ring-1 ring-gray-950/5 dark:ring-white/10" x-data="{ openFull:null, showPreviews:false }">
+    <div class="mb-6 p-4 bg-gradient-to-b from-white to-slate-50 dark:from-gray-800 dark:to-gray-900 rounded-xl shadow-sm ring-1 ring-gray-950/5 dark:ring-white/10 relative z-0" x-data="{ openFull:null, showPreviews:false }">
             <style>
+                /* Desplazamiento forzado del contenido hacia la derecha en esta página */
+                #impr-cred-root { margin-left: 0.75rem !important; padding-left: 1rem; }
+                @media (min-width: 640px) { #impr-cred-root { margin-left: 1rem !important; padding-left: 1.25rem; } }
+                @media (min-width: 768px) { #impr-cred-root { margin-left: 1.5rem !important; padding-left: 1.5rem; } }
+                @media (min-width: 1024px) { #impr-cred-root { margin-left: 2rem !important; padding-left: 2rem; } }
+                @media (min-width: 1280px) { #impr-cred-root { margin-left: 2.5rem !important; padding-left: 2.5rem; } }
+                @media (min-width: 1536px) { #impr-cred-root { margin-left: 3rem !important; padding-left: 3rem; } }
+                /* Z-index explícitos para respetar la superposición del sidebar en pantallas pequeñas */
+                .fi-main { position: relative; z-index: 0; }
+                .fi-topbar { position: relative; z-index: 9970; }
+                .fi-sidebar-close-overlay { z-index: 9980 !important; }
+                .fi-sidebar { z-index: 9990 !important; }
+                /* Baja el stacking context de contenedores locales y tabla */
+                .fi-ta, .fi-ta-content, .fi-ta-table, .fi-fo { position: relative; z-index: 0; }
                 .cred-thumb {width:170px;max-width:170px;display:block;height:auto;object-fit:contain;background:#f8fafc;}
                 .dark .cred-thumb {background:#1f2937;}
                 .cred-thumb-wrapper {width:170px}
@@ -80,7 +109,7 @@
 
             @if($hasTemplates)
             <div x-show="showPreviews" x-collapse x-cloak class="relative">
-                <div class="absolute inset-0 z-10 flex items-center justify-center bg-white/70 dark:bg-gray-900/70" wire:loading.flex wire:target="data.proceso_fecha_id,clearPlantillaCache,clearPlantillaCacheAllActive">
+                <div class="absolute inset-0 z-[1] flex items-center justify-center bg-white/70 dark:bg-gray-900/70" wire:loading.flex wire:target="data.proceso_fecha_id,clearPlantillaCache,clearPlantillaCacheAllActive">
                     <div class="flex flex-col items-center gap-2">
                         <div class="spinner"></div>
                         <span class="text-xs font-medium text-gray-600 dark:text-gray-300">Cargando plantillas...</span>
@@ -135,7 +164,7 @@
             </div>
             @endif
             <template x-if="openFull">
-                <div class="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4" @keydown.escape.window="openFull=null" x-cloak>
+                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" @keydown.escape.window="openFull=null" x-cloak>
                     <div class="cred-modal bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-[85vw] max-h-[85vh] overflow-auto relative">
                         <button type="button" class="absolute top-2 right-2 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200" @click="openFull=null" aria-label="Cerrar">✕</button>
                         <div class="p-4 space-y-3">
@@ -151,11 +180,12 @@
                 </div>
             </template>
         </div>
-    </div>
 
-    {{-- Tabla de Resultados --}}
-    <div>
-        {{ $this->table }}
+        {{-- Tabla de Resultados --}}
+        <div class="relative z-0">
+            {{ $this->table }}
+        </div>
+
     </div>
 
 </x-filament-panels::page>

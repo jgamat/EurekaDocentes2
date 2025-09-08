@@ -32,8 +32,8 @@
             Página: {{ $p['page_no'] ?? '' }} 
                     &nbsp; | &nbsp;
                     Fecha: {{ \Carbon\Carbon::parse($fecha_proceso)->format('d/m/Y') }}
-                    &nbsp; | &nbsp;
-            Fecha de impresión: {{ \Carbon\Carbon::parse($impresion_fecha)->format('d/m/Y H:i') }}
+                  <!--  &nbsp; | &nbsp; -->
+          <!--  Fecha de impresión: {{ \Carbon\Carbon::parse($impresion_fecha)->format('d/m/Y H:i') }} -->
                 </div>
             </div>
             <!-- Línea 2: izquierda OFICINA, centro PLANILLA N° (sin posiciones absolutas para evitar solapes) -->
@@ -136,7 +136,7 @@
                         <tr>
                             <td style="width:50%; height:60px; vertical-align:bottom; text-align:center;">
                                 ________________________________<br>
-                                Dr. Victor Ricardo Masuda Toyofuku<br>
+                                Dr. Domingo Guzman Chumpitaz Ramos<br>
                                 Director General Oficina Admisión
                             </td>
                             <td style="width:50%; height:60px; vertical-align:bottom; text-align:center;">

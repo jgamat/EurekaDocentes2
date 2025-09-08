@@ -54,9 +54,9 @@ class ProcesoResource extends Resource
             Section::make('Fechas del Proceso')
                 ->description('Añade las fechas para este proceso.')
                 ->schema([
-                    // --- ¡AQUÍ ESTÁ LA MAGIA! ---
-                    Repeater::make('procesoFecha') // <-- El nombre DEBE COINCIDIR con el de la relación
-                        ->relationship() // <-- Le dice a Filament que gestione la relación Eloquent
+                    
+                    Repeater::make('procesoFecha') 
+                        ->relationship() 
                         ->schema([
                            DatePicker::make('profec_dFecha')
                                 ->label('Fecha del Examen')
@@ -69,21 +69,31 @@ class ProcesoResource extends Resource
                       FileUpload::make('profec_vcUrlAnverso')
                           ->label('Anverso (JPG)')
                           ->image()
+                          ->disk('public')
                           ->directory('credenciales/plantillas')
                           ->visibility('public')
-                          ->acceptedFileTypes(['image/jpeg','image/jpg'])
-                          ->maxSize(2048)
-                          ->helperText('Formato JPG, máx 2MB. Mínimo 2480x3508 px (A4 @300dpi).')
-                          ->rules(['dimensions:min_width=2480,min_height=3508']),
+                          ->acceptedFileTypes(['image/jpeg'])
+                          ->imagePreviewHeight(200)
+                          ->panelLayout('compact')
+                          ->openable()
+                          ->downloadable()
+                          ->maxSize(1024)
+                          ->helperText('Formato JPG, máx 1MB.')
+                          ->rules(['dimensions:min_width=1241,min_height=1754']),
                       FileUpload::make('profec_vcUrlReverso')
                           ->label('Reverso (JPG)')
                           ->image()
+                          ->disk('public')
                           ->directory('credenciales/plantillas')
                           ->visibility('public')
-                          ->acceptedFileTypes(['image/jpeg','image/jpg'])
-                          ->maxSize(2048)
-                          ->helperText('Formato JPG, máx 2MB. Mínimo 2480x3508 px (A4 @300dpi).')
-                          ->rules(['dimensions:min_width=2480,min_height=3508']),
+                          ->acceptedFileTypes(['image/jpeg'])
+                          ->imagePreviewHeight(200)
+                          ->panelLayout('compact')
+                          ->openable()
+                          ->downloadable()
+                          ->maxSize(1024)
+                          ->helperText('Formato JPG, máx 1MB.')
+                         ->rules(['dimensions:min_width=1241,min_height=1754']),
 
                            
                         ])
