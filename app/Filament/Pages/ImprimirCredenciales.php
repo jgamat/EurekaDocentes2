@@ -140,7 +140,13 @@ class ImprimirCredenciales extends Page implements HasForms, HasTable
                 // Docentes
                 TextColumn::make('docente.doc_vcCodigo')->label('Código')->sortable()->searchable()->visible(fn () => (int) (data_get($this->data,'tipo_personal_id') ?? 0) === 1)->extraAttributes(['class'=>'whitespace-nowrap w-20']),
                 TextColumn::make('docente.doc_vcDni')->label('DNI')->sortable()->searchable()->visible(fn () => (int) (data_get($this->data,'tipo_personal_id') ?? 0) === 1)->extraAttributes(['class'=>'whitespace-nowrap w-24']),
-                TextColumn::make('docente.nombre_completo')->label('Nombre')->searchable()->wrap()->limit(40)->visible(fn () => (int) (data_get($this->data,'tipo_personal_id') ?? 0) === 1)->extraAttributes(['class'=>'max-w-[240px]']),
+                TextColumn::make('docente.nombre_completo')
+                    ->label('Nombre')
+                    ->searchable(['docente.doc_vcNombre', 'docente.doc_vcPaterno', 'docente.doc_vcMaterno'])
+                    ->wrap()
+                    ->limit(40)
+                    ->visible(fn () => (int) (data_get($this->data,'tipo_personal_id') ?? 0) === 1)
+                    ->extraAttributes(['class'=>'max-w-[240px]']),
                 // Administrativos
                 TextColumn::make('administrativo.adm_vcCodigo')->label('Código')->sortable()->searchable()->visible(fn () => (int) (data_get($this->data,'tipo_personal_id') ?? 0) === 2)->extraAttributes(['class'=>'whitespace-nowrap w-20']),
                 TextColumn::make('administrativo.adm_vcDni')->label('DNI')->sortable()->searchable()->visible(fn () => (int) (data_get($this->data,'tipo_personal_id') ?? 0) === 2)->extraAttributes(['class'=>'whitespace-nowrap w-24']),
@@ -526,14 +532,27 @@ class ImprimirCredenciales extends Page implements HasForms, HasTable
             'front'=>['x'=>(float)(data_get($this->data,'offset_x_front') ?? 0),'y'=>(float)(data_get($this->data,'offset_y_front') ?? 0)],
             'back'=>['x'=>(float)(data_get($this->data,'offset_x_back') ?? 0),'y'=>(float)(data_get($this->data,'offset_y_back') ?? 0)],
         ],'debug'=>(bool)(data_get($this->data,'debug_grid') ?? false),])->render();
-        $pdf = Pdf::loadHTML($html)->setPaper('a4','portrait'); $pdfBinary = $pdf->output();
+    $pdf = Pdf::loadHTML($html)->setPaper('a4','portrait'); $pdfBinary = $pdf->output();
 
         $updated=0; foreach($items as $it){ if(!$it || !isset($it['model'])) continue; $it['model']->{$it['flagCol']}=true; $it['model']->{$it['fechaCol']}=now(); if(property_exists($it['model'],'user_idImpresion') || \Schema::hasColumn($it['model']->getTable(),'user_idImpresion')){ $it['model']->user_idImpresion=auth()->id(); } if(property_exists($it['model'],'IpImpresion') || \Schema::hasColumn($it['model']->getTable(),'IpImpresion')){ $it['model']->IpImpresion=request()->ip(); } $it['model']->save(); $updated++; }
 
         $this->dispatch('$refresh');
         $msg = 'Se imprimieron '.$updated.' credenciales.'; if($more){ $msg .= ' Quedan '.$more.' por imprimir (repita la acción).'; }
-        Notification::make()->title('PDF generado')->body($msg)->success()->send();
-        return response()->streamDownload(function() use ($pdfBinary){ echo $pdfBinary; }, 'credenciales_lote.pdf');
+
+        // Guardar el PDF en disco público y abrir en una nueva pestaña
+        $dir = 'credenciales/tmp';
+        $filename = 'credenciales_lote_'.now()->format('Ymd_His').'_'.bin2hex(random_bytes(3)).'.pdf';
+        $path = $dir.'/'.$filename;
+        try {
+            Storage::disk('public')->put($path, $pdfBinary);
+            $url = Storage::url($path);
+            // Dispara un evento de navegador para abrir en una nueva pestaña
+            $this->dispatch('open-pdf', url: $url);
+            Notification::make()->title('PDF generado')->body($msg)->success()->send();
+        } catch (\Throwable $e) {
+            Notification::make()->title('Error al generar PDF')->body($e->getMessage())->danger()->send();
+        }
+        return null;
     }
 
     public function clearPlantillaCache(): void

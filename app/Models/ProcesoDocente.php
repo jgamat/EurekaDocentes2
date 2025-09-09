@@ -36,12 +36,16 @@ class ProcesoDocente extends Model
     }
 
     public function getLocalCargoAttribute()
-{
-    return \App\Models\LocalCargo::where('loc_iCodigo', $this->loc_iCodigo ?? 0)
-        ->where('loc_iCodigo', $this->loc_iCodigo ?? 0)
-       
-        ->first();
-}
+    {
+        $locId = $this->loc_iCodigo ?? null;
+        $cargoId = $this->expadm_iCodigo ?? null;
+        if (!$locId || !$cargoId) {
+            return null;
+        }
+        return \App\Models\LocalCargo::where('loc_iCodigo', $locId)
+            ->where('expadm_iCodigo', $cargoId)
+            ->first();
+    }
 
     public function usuario()
     {

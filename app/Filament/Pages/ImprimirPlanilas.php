@@ -34,10 +34,12 @@ use App\Models\PlanillaDocente;
 use App\Models\PlanillaAdministrativo;
 use App\Models\PlanillaAlumno;
 use Filament\Notifications\Notification;
+use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 
 class ImprimirPlanilas extends Page implements HasForms, HasTable
 {
     use InteractsWithForms, InteractsWithTable;
+    use HasPageShield;
 
     protected static ?string $navigationIcon = 'heroicon-o-document-text';
     protected static ?string $navigationGroup = 'Planillas';

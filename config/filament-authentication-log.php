@@ -3,7 +3,7 @@
 return [
 
     'resources' => [
-        'AutenticationLogResource' => \Tapp\FilamentAuthenticationLog\Resources\AuthenticationLogResource::class,
+        'AutenticationLogResource' => \App\Filament\Resources\AuthenticationLogResource::class,
     ],
 
     'authenticable-resources' => [
@@ -13,6 +13,9 @@ return [
     'authenticatable' => [
     'field-to-display' => 'name',
     ],
+
+    // Which roles can see and access the authentication logs
+    'allowed_roles' => [ 'super_admin' ],
 
     'navigation' => [
         'authentication-log' => [

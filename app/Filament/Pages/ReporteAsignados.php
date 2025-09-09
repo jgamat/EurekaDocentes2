@@ -376,7 +376,7 @@ class ReporteAsignados extends Page implements HasTable, HasForms
                 ->label('Nombre Completo')
                 ->visible(fn() => $this->filters['tipo'] === 'docente')
                 ->wrap()
-                ->searchable(),
+                ->searchable(['docente.doc_vcNombre', 'docente.doc_vcPaterno', 'docente.doc_vcMaterno']),
             // Alumnos
             TextColumn::make('alumno.alu_vcCodigo')
                 ->label('Código')
@@ -392,7 +392,7 @@ class ReporteAsignados extends Page implements HasTable, HasForms
                 ->label('Nombre Completo')
                 ->visible(fn() => $this->filters['tipo'] === 'alumno')
                 ->wrap()
-                ->searchable(),
+                ->searchable(['alumno.alu_vcNombre', 'alumno.alu_vcPaterno', 'alumno.alu_vcMaterno']),
             // Comunes
             TextColumn::make('local.localesMaestro.locma_vcNombre')->label('Local')->sortable()->searchable(),
             TextColumn::make('experienciaAdmision.maestro.expadmma_vcNombre')->label('Cargo')->sortable()->searchable(),

@@ -13,7 +13,10 @@
     </style>
 
     <!-- Wrapper para desplazar el contenido a la derecha (solo en esta página) -->
-    <div id="impr-cred-root" class="w-full" style="margin-left: 48px;">
+    <div id="impr-cred-root" class="w-full" style="margin-left: 48px;"
+        x-data
+        x-on:open-pdf.window="if($event.detail?.url){ window.open($event.detail.url, '_blank'); }"
+    >
 
     <!-- Barra de acciones superior -->
     <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between relative z-0">
