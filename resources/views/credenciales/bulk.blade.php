@@ -58,12 +58,12 @@ body { margin:0; font-family: DejaVu Sans, sans-serif; }
                 $nameLineHeight = 4; // separación entre líneas de nombre
                 $hasName2 = !empty($p['nombres_line2']);
                 $nameTop2 = $hasName2 ? $nameTop1 + $nameLineHeight : null;
-                $dniTop = $hasName2 ? ($nameTop1 + $nameLineHeight + 5) : 25; // ajuste si hay segunda línea
+                $dniTop = $hasName2 ? ($nameTop1 + $nameLineHeight + 7) : 25; // ajuste si hay segunda línea
                 $cargoTop1 = $dniTop + 7; // primera línea cargo
-                $cargoTop2 = $cargoTop1 + 4; // segunda línea cargo
+                $cargoTop2 = $cargoTop1 + 3; // segunda línea cargo
                 // Local debajo de cargo antes de foto (bajarlo unos mm adicionales)
-                $localTopCalculated = !empty($p['cargo_line2']) ? ($cargoTop2 + 19) : ($cargoTop1 + 23);
-                $fotoTop = 43; $fotoLeft = 54.5; // posición foto
+                $localTopCalculated = !empty($p['cargo_line2']) ? ($cargoTop2 + 18) : ($cargoTop1 + 43);
+                $fotoTop = 44.5; $fotoLeft = 56.5; // posición foto
                 if ($localTopCalculated + 3 > $fotoTop) {
                     $localTopCalculated = $fotoTop - 4; // evita solape
                 }
@@ -82,7 +82,7 @@ body { margin:0; font-family: DejaVu Sans, sans-serif; }
                     <div class="txt" style="top:{{ $cargoTop2 ?? (($cargoTop1 ?? 31)+4) }}mm; left:1mm; width:55mm;">{{ $p['cargo_line2'] }}</div>
                 @endif
                 <!-- Local en celda vacía -->
-                <div class="txt" style="top:{{ ($localTopCalculated ?? 39) + 2 }}mm; left:1mm; width:55mm;">{{ $p['local'] }}</div>
+                <div class="txt" style="top:{{ ($localTopCalculated ?? 39) + 3 }}mm; left:1mm; width:55mm;">{{ $p['local'] }}</div>
                 <!-- Código y Número (parte inferior) -->
                 <div class="txt" style="top:73mm; left:3mm;">{{ $p['codigo'] }}</div>
                 <div class="txt" style="top:77mm; left:3mm;">{{ $p['credencial'] }}</div>
@@ -95,7 +95,7 @@ body { margin:0; font-family: DejaVu Sans, sans-serif; }
                         try { $rawFoto = @file_get_contents($p['foto_path']); } catch (\Exception $e) { $rawFoto = null; }
                     @endphp
                     @if($rawFoto)
-                        <img class="foto" style="top:{{ $fotoTop ?? 43 }}mm; left:{{ $fotoLeft ?? 54.5 }}mm;" src="data:image/jpeg;base64,{{ base64_encode($rawFoto) }}" />
+                        <img class="foto" style="top:{{ $fotoTop ?? 45 }}mm; left:{{ $fotoLeft ?? 57 }}mm;" src="data:image/jpeg;base64,{{ base64_encode($rawFoto) }}" />
                     @endif
                 @endif
             </div>
