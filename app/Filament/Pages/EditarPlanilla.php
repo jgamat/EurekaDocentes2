@@ -20,10 +20,12 @@ use Filament\Actions\Action; // header action
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Support\Str;
+use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 
 class EditarPlanilla extends Page implements Forms\Contracts\HasForms, HasTable
 {
     use Forms\Concerns\InteractsWithForms, Tables\Concerns\InteractsWithTable;
+    use HasPageShield;
 
     protected static ?string $navigationIcon = 'heroicon-o-document-text';
     protected static ?string $navigationGroup = 'Planillas';

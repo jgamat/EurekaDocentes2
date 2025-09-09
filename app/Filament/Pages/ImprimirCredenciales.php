@@ -152,6 +152,17 @@ class ImprimirCredenciales extends Page implements HasForms, HasTable
                 TextColumn::make('administrativo.adm_vcDni')->label('DNI')->sortable()->searchable()->visible(fn () => (int) (data_get($this->data,'tipo_personal_id') ?? 0) === 2)->extraAttributes(['class'=>'whitespace-nowrap w-24']),
                 TextColumn::make('administrativo.adm_vcNombres')->label('Nombre')->searchable()->wrap()->limit(40)->visible(fn () => (int) (data_get($this->data,'tipo_personal_id') ?? 0) === 2)->extraAttributes(['class'=>'max-w-[240px]']),
 
+                // Alumnos
+                TextColumn::make('alumno.alu_vcCodigo')->label('Código')->sortable()->searchable()->visible(fn () => (int) (data_get($this->data,'tipo_personal_id') ?? 0) === 3)->extraAttributes(['class'=>'whitespace-nowrap w-20']),
+                TextColumn::make('alumno.alu_vcDni')->label('DNI')->sortable()->searchable()->visible(fn () => (int) (data_get($this->data,'tipo_personal_id') ?? 0) === 3)->extraAttributes(['class'=>'whitespace-nowrap w-24']),
+                TextColumn::make('alumno.nombre_completo')
+                    ->label('Nombre')
+                    ->searchable(['alumno.alu_vcNombre', 'alumno.alu_vcPaterno', 'alumno.alu_vcMaterno'])
+                    ->wrap()
+                    ->limit(40)
+                    ->visible(fn () => (int) (data_get($this->data,'tipo_personal_id') ?? 0) === 3)
+                    ->extraAttributes(['class'=>'max-w-[240px]']),
+
                 // Comunes
                 TextColumn::make('experienciaAdmision.maestro.expadmma_vcNombre')->label('Cargo')->wrap()->limit(35)->extraAttributes(['class'=>'max-w-[200px]']),
                 TextColumn::make('local.localesMaestro.locma_vcNombre')->label('Local')->wrap()->limit(25)->extraAttributes(['class'=>'max-w-[160px]']),
@@ -370,7 +381,7 @@ class ImprimirCredenciales extends Page implements HasForms, HasTable
                 break;
             case 3:
                 $query = ProcesoAlumno::query()
-                    ->with(['local.localesMaestro', 'experienciaAdmision.maestro'])
+                    ->with(['local.localesMaestro', 'experienciaAdmision.maestro', 'alumno'])
                     ->where('profec_iCodigo', $procesoFechaId)
                     ->where('proalu_iAsignacion', true);
                 break;
