@@ -54,7 +54,19 @@ class AsignarDocentes extends Page implements HasForms
                     ->options(ProcesoFecha::where('profec_iActivo', true)->pluck('profec_dFecha', 'profec_iCodigo'))
                     ->searchable()
                     ->required()
-                    ->reactive(),
+                    ->reactive()
+                    ->afterStateUpdated(function ($state, callable $get, callable $set) {
+                        // Al cambiar la fecha, reiniciar Local y Cargo y limpiar la plaza
+                        $set('local_id', null);
+                        $set('experiencia_admision_id', null);
+                        $this->plazaSeleccionada = null;
+                        // Notificar a la tabla para que se vacíe
+                        $this->dispatch('contextoActualizado',
+                            procesoFechaId: $state,
+                            localId: null,
+                            experienciaAdmisionId: null
+                        );
+                    }),
 
                 // SELECT 2: LOCAL (depende de la fecha)
                 Select::make('local_id')
@@ -70,7 +82,18 @@ class AsignarDocentes extends Page implements HasForms
                     })
                     ->searchable()
                     ->required()
-                    ->reactive(),
+                    ->reactive()
+                    ->afterStateUpdated(function ($state, callable $get, callable $set) {
+                        // Al cambiar el local, reiniciar el cargo y limpiar la plaza
+                        $set('experiencia_admision_id', null);
+                        $this->plazaSeleccionada = null;
+                        // Notificar a la tabla del nuevo contexto (sin cargo aún)
+                        $this->dispatch('contextoActualizado',
+                            procesoFechaId: $get('proceso_fecha_id'),
+                            localId: $state,
+                            experienciaAdmisionId: null
+                        );
+                    }),
 
                 Select::make('experiencia_admision_id')
                     ->label('3. Seleccione el Cargo')

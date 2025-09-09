@@ -15,12 +15,12 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
-use BezhanSalleh\FilamentShield\Traits\HasPageShield;
+
 
 
 class AlumnoResource extends Resource
 {
-    use HasPageShield;
+ 
     protected static ?string $model = Alumno::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
@@ -36,12 +36,27 @@ class AlumnoResource extends Resource
             ]);
     }
 
+    // Visibilidad y acceso se gestionan por Filament Shield (Roles/Permisos) mediante HasPageShield
+
     public static function table(Table $table): Table
     {
         return $table
             ->query(
                 Alumno::query()
-                    ->select(['alu_id','alu_vcCodigo','alu_vcDni','alu_vcPaterno','alu_vcMaterno','alu_vcNombre','fac_vcNombre'])
+                    ->select([
+                        'alu_id',
+                        'alu_vcCodigo',
+                        'alu_vcDni',
+                        'alu_vcPaterno',
+                        'alu_vcMaterno',
+                        'alu_vcNombre',
+                        'fac_vcNombre',
+                        'esc_vcNombre',
+                        'alu_vcCelular',
+                        'alu_vcEmail',
+                        'alu_vcEmailPer',
+                        'alu_iAnioIngreso',
+                    ])
                     ->withCount('asignaciones')
             )
             ->columns([
