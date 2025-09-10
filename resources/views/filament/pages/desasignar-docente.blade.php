@@ -9,6 +9,8 @@
                 <li><b>DNI:</b> {{ $this->asignacionActual->docente->doc_vcDni ?? '-' }}</li>
                 <li><b>Código:</b> {{ $this->asignacionActual->docente->doc_vcCodigo ?? '-' }}</li>
                 <li><b>Fecha:</b> {{ $this->asignacionActual->procesoFecha->profec_dFecha ?? '-' }}</li>
+                <li><b>Local:</b> {{ optional($this->asignacionActual->local?->localesMaestro)->locma_vcNombre ?? '-' }}</li>
+                <li><b>Cargo:</b> {{ optional($this->asignacionActual->experienciaAdmision?->maestro)->expadmma_vcNombre ?? '-' }}</li>
                 <li><b>Usuario Asignador:</b> {{ $this->asignacionActual->usuario->name ?? '-' }}</li>
                 <li><b>Fecha Asignación:</b> {{ $this->asignacionActual->prodoc_dtFechaAsignacion ?? '-' }}</li>
             </ul>

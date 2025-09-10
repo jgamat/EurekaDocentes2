@@ -238,21 +238,18 @@ class AsignarDocentes extends Page implements HasForms
         return;
     }
 
-    // Validación de asignación única por fecha y cargo con prodoc_iAsignacion = 1
-    $asignacionExistente = ProcesoDocente::where('profec_iCodigo', $newState['proceso_fecha_id'])
-        ->where('loc_iCodigo', $newState['local_id'])
-        ->where('expadm_iCodigo', $newState['experiencia_admision_id'])
+    // Validación: el docente no debe tener ya una asignación activa (prodoc_iAsignacion=1) en esta fecha (sin importar local/cargo)
+    $asignacionActivaMismaFecha = ProcesoDocente::where('profec_iCodigo', $newState['proceso_fecha_id'])
         ->where('doc_vcCodigo', $docente->doc_vcCodigo)
         ->where('prodoc_iAsignacion', 1)
         ->first();
 
-    if ($asignacionExistente) {
-        $localNombre = $plaza->localesMaestro->locma_vcNombre ?? 'Local desconocido';
-        $cargoNombre = $plaza->maestro->expadmma_vcNombre ?? 'Cargo desconocido';
-
+    if ($asignacionActivaMismaFecha) {
+        $locNombre = optional($asignacionActivaMismaFecha->local?->localesMaestro)->locma_vcNombre ?? 'Local desconocido';
+        $cargoNombre = optional($asignacionActivaMismaFecha->experienciaAdmision?->maestro)->expadmma_vcNombre ?? 'Cargo desconocido';
         Notification::make()
             ->title('Asignación Bloqueada')
-            ->body("El docente {$docente->nombre_completo} ya está asignado en esta fecha en el {$localNombre} - {$cargoNombre}.")
+            ->body("El docente {$docente->nombre_completo} ya está asignado en la fecha seleccionada ({$locNombre} - {$cargoNombre}).")
             ->danger()
             ->send();
         return;
@@ -268,10 +265,11 @@ class AsignarDocentes extends Page implements HasForms
         return;
     }
 
-    // Buscar si existe un registro con prodoc_iAsignacion = 0 para este docente y fecha
+    // Buscar si existe un registro previo (inactivo) de este docente en la misma fecha para reactivarlo
     $asignacionPendiente = ProcesoDocente::where('profec_iCodigo', $newState['proceso_fecha_id'])
         ->where('doc_vcCodigo', $docente->doc_vcCodigo)
         ->where('prodoc_iAsignacion', 0)
+        ->latest('prodoc_id')
         ->first();
 
     DB::transaction(function () use ($plaza, $docente, $newState, $asignacionPendiente) {

@@ -49,12 +49,28 @@ class AsignadosDocenteTable extends Component implements HasForms, HasTable
                 }
 
                 // 4. La consulta ahora filtra por las 3 claves foráneas en la tabla 'proceso_docentes'
-                return ProcesoDocente::query()
+                $query = ProcesoDocente::query()
                     ->with(['docente', 'experienciaAdmision.maestro', 'local.localesMaestro', 'procesoFecha', 'usuario'])
                     ->where('profec_iCodigo', $this->procesoFechaId)
                     ->where('loc_iCodigo', $this->localId)
                     ->where('prodoc_iAsignacion', true)
                     ->where('expadm_iCodigo', $this->experienciaAdmisionId);
+
+                // Restringir por rol del usuario asignador: solo mostrar registros asignados por usuarios
+                // que comparten algún rol con el usuario actual, excepto roles privilegiados
+                $user = auth()->user();
+                if ($user && !$user->hasAnyRole(['Economia', 'Info', 'super_admin'])) {
+                    $roles = $user->getRoleNames();
+                    if ($roles && $roles->isNotEmpty()) {
+                        $query->whereHas('usuario.roles', function ($q) use ($roles) {
+                            $q->whereIn('name', $roles);
+                        });
+                    } else {
+                        // Si no tiene roles, no mostrar nada por seguridad
+                        $query->whereRaw('1 = 0');
+                    }
+                }
+                return $query;
                     
             })
             ->heading(fn () => 'Docentes Ya Asignados ('.$this->getAsignadosCount().')')
@@ -149,6 +165,7 @@ class AsignadosDocenteTable extends Component implements HasForms, HasTable
                 Action::make('desasignar')
                     ->label('Desasignar')
                     ->icon('heroicon-o-x-circle')
+                    ->visible(fn ($record) => (int) ($record->user_id ?? 0) === (int) (auth()->id() ?? 0))
                     ->requiresConfirmation()
                     ->color('danger')
                     ->action(function ($record, $livewire) {
@@ -186,12 +203,24 @@ class AsignadosDocenteTable extends Component implements HasForms, HasTable
         if (!$this->procesoFechaId || !$this->localId || !$this->experienciaAdmisionId) {
             return 0;
         }
-        return ProcesoDocente::query()
+        $query = ProcesoDocente::query()
             ->where('profec_iCodigo', $this->procesoFechaId)
             ->where('loc_iCodigo', $this->localId)
             ->where('expadm_iCodigo', $this->experienciaAdmisionId)
-            ->where('prodoc_iAsignacion', true)
-            ->count();
+            ->where('prodoc_iAsignacion', true);
+
+        $user = auth()->user();
+        if ($user && !$user->hasAnyRole(['Economia', 'Info', 'super_admin'])) {
+            $roles = $user->getRoleNames();
+            if ($roles && $roles->isNotEmpty()) {
+                $query->whereHas('usuario.roles', function ($q) use ($roles) {
+                    $q->whereIn('name', $roles);
+                });
+            } else {
+                return 0;
+            }
+        }
+        return $query->count();
     }
 
     public function render()
