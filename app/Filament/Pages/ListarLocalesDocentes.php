@@ -12,6 +12,7 @@ use Filament\Forms;
 use Filament\Forms\Components\Select; 
 use Illuminate\Database\Eloquent\Builder; 
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
+use Filament\Pages\Actions\Action;
 
 class ListarLocalesDocentes extends Page implements Tables\Contracts\HasTable, Forms\Contracts\HasForms
 {
@@ -32,6 +33,20 @@ class ListarLocalesDocentes extends Page implements Tables\Contracts\HasTable, F
     {
         // Preseleccionar la fecha activa si existe
         $this->procesoFechaId = ProcesoFecha::where('profec_iActivo', true)->value('profec_iCodigo');
+    }
+
+    // Único botón Imprimir en el header
+    protected function getHeaderActions(): array
+    {
+        return [
+            \Filament\Pages\Actions\Action::make('imprimir')
+                ->label('Imprimir')
+                ->icon('heroicon-o-printer')
+                ->color('gray')
+                ->extraAttributes([
+                    'onclick' => 'window.print()'
+                ]),
+        ];
     }
 
     // Control de acceso explícito (compatibilidad con Filament Shield si aún no se ha generado el permiso)
@@ -65,6 +80,8 @@ class ListarLocalesDocentes extends Page implements Tables\Contracts\HasTable, F
         return $form->schema($this->getFormSchema());
     }
 
+    // (Se removió acción de imprimir en el header para evitar botón duplicado)
+
     public function table(Table $table): Table
     {
         return $table
@@ -90,15 +107,15 @@ class ListarLocalesDocentes extends Page implements Tables\Contracts\HasTable, F
                     ->sortable()
                     ->searchable(),
                 TextColumn::make('aula')
-                    ->label('Docente de Aula (Vacantes/Ocupados)')
+                    ->label('D.A (Vacantes/Ocupados)')
                     ->getStateUsing(fn ($record) => $this->vacantesCache[$record->loc_iCodigo][4] ?? '')
                     ->sortable(false),
                 TextColumn::make('coordinador')
-                    ->label('Coordinador de Unidad (Vacantes/Ocupados)')
+                    ->label('C.U (Vacantes/Ocupados)')
                     ->getStateUsing(fn ($record) => $this->vacantesCache[$record->loc_iCodigo][3] ?? '')
                     ->sortable(false),
                 TextColumn::make('jefe')
-                    ->label('Jefe de Unidad (Vacantes/Ocupados)')
+                    ->label('J.U (Vacantes/Ocupados)')
                     ->getStateUsing(fn ($record) => $this->vacantesCache[$record->loc_iCodigo][2] ?? '')
                     ->sortable(false),
             ])

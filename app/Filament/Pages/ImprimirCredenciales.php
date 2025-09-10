@@ -506,10 +506,9 @@ class ImprimirCredenciales extends Page implements HasForms, HasTable
             try { \Barryvdh\Debugbar\Facades\Debugbar::disable(); } catch (\Throwable $e) {}
         }
 
-        $batchSize = 40;
-        $total = $records->count();
-        $more = $total > $batchSize ? $total - $batchSize : 0;
-        $processRecords = $more ? $records->take($batchSize) : $records;
+    // Se eliminó el límite de lote (antes 40) para imprimir todos los registros en una sola ejecución
+    $processRecords = $records;
+    $more = 0; // Mantener variable por compatibilidad con mensaje previo (ya no se usa condicionalmente)
 
         $items = [];
         foreach ($processRecords as $record) {
@@ -548,7 +547,7 @@ class ImprimirCredenciales extends Page implements HasForms, HasTable
         $updated=0; foreach($items as $it){ if(!$it || !isset($it['model'])) continue; $it['model']->{$it['flagCol']}=true; $it['model']->{$it['fechaCol']}=now(); if(property_exists($it['model'],'user_idImpresion') || \Schema::hasColumn($it['model']->getTable(),'user_idImpresion')){ $it['model']->user_idImpresion=auth()->id(); } if(property_exists($it['model'],'IpImpresion') || \Schema::hasColumn($it['model']->getTable(),'IpImpresion')){ $it['model']->IpImpresion=request()->ip(); } $it['model']->save(); $updated++; }
 
         $this->dispatch('$refresh');
-        $msg = 'Se imprimieron '.$updated.' credenciales.'; if($more){ $msg .= ' Quedan '.$more.' por imprimir (repita la acción).'; }
+    $msg = 'Se imprimieron '.$updated.' credenciales.'; // Ya no hay lote restante
 
         // Guardar el PDF en disco público y abrir en una nueva pestaña
         $dir = 'credenciales/tmp';

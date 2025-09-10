@@ -41,6 +41,9 @@ class ReporteAsignados extends Page implements HasTable, HasForms
     protected static ?string $navigationGroup = 'Reportes';
     protected static ?string $title = 'Reporte Asignados';
     protected static string $view = 'filament.pages.reporte-asignados';
+    // Ampliar ancho máximo del contenido para evitar scroll horizontal en la tabla
+    // Debe ser propiedad de instancia (el padre la define como no estática)
+    protected ?string $maxContentWidth = 'full';
 
     public array $filters = [
         'proceso_id' => null,
@@ -70,25 +73,25 @@ class ReporteAsignados extends Page implements HasTable, HasForms
                     ->label('Proceso Abierto')
                     ->options(Proceso::where('pro_iAbierto', true)->orderBy('pro_vcNombre')->pluck('pro_vcNombre', 'pro_iCodigo'))
                     ->reactive()
-                    ->afterStateUpdated(function ($state) {
-                        $this->filters['proceso_id'] = $state; // sincronizar
+                    ->afterStateUpdated(function($state){
+                        $this->filters['proceso_id'] = $state;
+                        // Reset fecha al cambiar proceso
                         $this->filters['proceso_fecha_id'] = null;
                     })
-                    ->extraAttributes(['class'=>'w-full','style'=>'min-width:480px;'])
                     ->columnSpan(12),
                 Select::make('proceso_fecha_id')
                     ->label('Fecha Activa')
-                    ->options(function () {
+                    ->options(function(){
                         $pid = $this->filters['proceso_id'] ?? null;
-                        if (!$pid) return [];
-                        return ProcesoFecha::where('pro_iCodigo', $pid)
+                        if(!$pid) return [];
+                        return ProcesoFecha::where('pro_iCodigo',$pid)
                             ->where('profec_iActivo', true)
                             ->orderBy('profec_dFecha')
-                            ->pluck('profec_dFecha', 'profec_iCodigo');
+                            ->pluck('profec_dFecha','profec_iCodigo');
                     })
                     ->reactive()
-                    ->afterStateUpdated(fn($state) => $this->filters['proceso_fecha_id'] = $state)
-                    ->extraAttributes(['class'=>'w-full','style'=>'min-width:480px;'])
+                    ->afterStateUpdated(fn($state)=> $this->filters['proceso_fecha_id'] = $state)
+                    ->placeholder('Seleccione fecha')
                     ->columnSpan(12),
                 Select::make('tipo')
                     ->label('Tipo de Personal')
@@ -101,16 +104,7 @@ class ReporteAsignados extends Page implements HasTable, HasForms
                     ->afterStateUpdated(fn($state) => $this->filters['tipo'] = $state)
                     ->extraAttributes(['class'=>'w-full','style'=>'min-width:460px;'])
                     ->columnSpan(['default'=>12,'md'=>6,'xl'=>6]),
-                Select::make('usuario_id')
-                    ->label('Usuario Asignador')
-                    ->placeholder('Todos')
-                    ->options(User::orderBy('name')->pluck('name','id'))
-                    ->searchable()
-                    ->reactive()
-                    ->afterStateUpdated(fn($state)=> $this->filters['usuario_id'] = $state)
-                    ->hidden(fn()=> !$this->filters['tipo'])
-                    ->extraAttributes(['class'=>'w-full','style'=>'min-width:480px;'])
-                    ->columnSpan(12),
+                // Se elimina el select de Usuario Asignador: ahora los datos se restringen automáticamente por roles
             ])
             ->columns(12)
             ->statePath('filters');
@@ -128,8 +122,8 @@ class ReporteAsignados extends Page implements HasTable, HasForms
                 default => ProcesoAdministrativo::query()->whereRaw('1=0'),
             };
         }
-        $usuarioFiltro = $this->filters['usuario_id'] ?? null;
-        $applyUsuario = function(Builder $q) use ($usuarioFiltro){ if($usuarioFiltro){ $q->where($q->getModel()->getTable().'.user_id', $usuarioFiltro); } };
+    $user = Auth::user();
+    $currentRoles = $user?->getRoleNames() ?? collect();
         $base = match($tipo){
             'administrativo' => ProcesoAdministrativo::query()
                 ->with(['administrativo','experienciaAdmision.maestro','local.localesMaestro','usuario','procesoFecha'])
@@ -146,7 +140,15 @@ class ReporteAsignados extends Page implements HasTable, HasForms
             default => null,
         };
         if($base){
-            $applyUsuario($base);
+            // super_admin ve todo, el resto se restringe a roles coincidentes
+            if(!$user || !$user->hasRole('super_admin')){
+                if($currentRoles->isNotEmpty()){
+                    $base->whereHas('usuario.roles', fn($q) => $q->whereIn('name', $currentRoles));
+                } else {
+                    // Sin roles -> sin resultados
+                    $base->whereRaw('1=0');
+                }
+            }
             $main = $base->getModel()->getTable();
             // Joins para ordenar
           $base->leftJoin('locales','locales.loc_iCodigo','=',$main.'.loc_iCodigo')
@@ -241,7 +243,8 @@ class ReporteAsignados extends Page implements HasTable, HasForms
         if(!$pf || !$tipo) return [];
         $main = $this->getBaseTableName();
         if(!$main) return [];
-        $usuario = $this->filters['usuario_id'] ?? null;
+    $user = Auth::user();
+    $roleNames = $user?->getRoleNames() ?? collect();
 
         $asignacionFlag = match($tipo){
             'administrativo' => 'proadm_iAsignacion',
@@ -251,18 +254,30 @@ class ReporteAsignados extends Page implements HasTable, HasForms
         };
         if(!$asignacionFlag) return [];
 
-        $rows = DB::table($main)
+        // Construcción base
+        $rowsQuery = DB::table($main)
             ->select($main.'.loc_iCodigo','lm.locma_vcNombre')
             ->leftJoin('locales','locales.loc_iCodigo','=',$main.'.loc_iCodigo')
             ->leftJoin('localMaestro as lm','lm.locma_iCodigo','=','locales.locma_iCodigo')
             ->where($main.'.profec_iCodigo',$pf)
             ->where($asignacionFlag, true)
-            ->when($usuario, fn($q)=> $q->where($main.'.user_id',$usuario))
-            ->whereNotNull($main.'.loc_iCodigo')
-            ->distinct()
-            ->orderBy('lm.locma_vcNombre')
-            ->get();
-
+            ->whereNotNull($main.'.loc_iCodigo');
+        if(!$user || !$user->hasRole('super_admin')){
+            if($roleNames->isNotEmpty()){
+                $rowsQuery->whereExists(function($q) use ($main,$roleNames){
+                    $q->select(DB::raw(1))
+                      ->from('users')
+                      ->join('model_has_roles','model_has_roles.model_id','=','users.id')
+                      ->join('roles','roles.id','=','model_has_roles.role_id')
+                      ->whereColumn('users.id',$main.'.user_id')
+                      ->where('model_has_roles.model_type', User::class)
+                      ->whereIn('roles.name',$roleNames->toArray());
+                });
+            } else {
+                return []; // sin roles visibles
+            }
+        }
+        $rows = $rowsQuery->distinct()->orderBy('lm.locma_vcNombre')->get();
         return $rows->mapWithKeys(fn($r)=> [ $r->loc_iCodigo => ($r->locma_vcNombre ?: ('Local #'.$r->loc_iCodigo)) ])->toArray();
     }
 
@@ -274,7 +289,8 @@ class ReporteAsignados extends Page implements HasTable, HasForms
         if(!$pf || !$tipo) return [];
         $main = $this->getBaseTableName();
         if(!$main) return [];
-        $usuario = $this->filters['usuario_id'] ?? null;
+    $user = Auth::user();
+    $roleNames = $user?->getRoleNames() ?? collect();
 
         $asignacionFlag = match($tipo){
             'administrativo' => 'proadm_iAsignacion',
@@ -284,18 +300,27 @@ class ReporteAsignados extends Page implements HasTable, HasForms
         };
         if(!$asignacionFlag) return [];
 
-        $rows = DB::table($main)
+        $rowsQuery = DB::table($main)
             ->select($main.'.expadm_iCodigo','eam.expadmma_vcNombre')
             ->leftJoin('experienciaadmision','experienciaadmision.expadm_iCodigo','=',$main.'.expadm_iCodigo')
             ->leftJoin('experienciaadmisionMaestro as eam','eam.expadmma_iCodigo','=','experienciaadmision.expadmma_iCodigo')
             ->where($main.'.profec_iCodigo',$pf)
             ->where($asignacionFlag, true)
-            ->when($usuario, fn($q)=> $q->where($main.'.user_id',$usuario))
-            ->whereNotNull($main.'.expadm_iCodigo')
-            ->distinct()
-            ->orderBy('eam.expadmma_vcNombre')
-            ->get();
-
+            ->whereNotNull($main.'.expadm_iCodigo');
+        if(!$user || !$user->hasRole('super_admin')){
+            if($roleNames->isNotEmpty()){
+                $rowsQuery->whereExists(function($q) use ($main,$roleNames){
+                    $q->select(DB::raw(1))
+                      ->from('users')
+                      ->join('model_has_roles','model_has_roles.model_id','=','users.id')
+                      ->join('roles','roles.id','=','model_has_roles.role_id')
+                      ->whereColumn('users.id',$main.'.user_id')
+                      ->where('model_has_roles.model_type', User::class)
+                      ->whereIn('roles.name',$roleNames->toArray());
+                });
+            } else { return []; }
+        }
+        $rows = $rowsQuery->distinct()->orderBy('eam.expadmma_vcNombre')->get();
         return $rows->mapWithKeys(fn($r)=> [ $r->expadm_iCodigo => ($r->expadmma_vcNombre ?: ('Cargo #'.$r->expadm_iCodigo)) ])->toArray();
     }
 
@@ -376,7 +401,7 @@ class ReporteAsignados extends Page implements HasTable, HasForms
                 ->label('Nombre Completo')
                 ->visible(fn() => $this->filters['tipo'] === 'docente')
                 ->wrap()
-                ->searchable(['docente.doc_vcNombre', 'docente.doc_vcPaterno', 'docente.doc_vcMaterno']),
+                ->searchable(['docente.doc_vcNombre','docente.doc_vcPaterno','docente.doc_vcMaterno']),
             // Alumnos
             TextColumn::make('alumno.alu_vcCodigo')
                 ->label('Código')
@@ -392,12 +417,12 @@ class ReporteAsignados extends Page implements HasTable, HasForms
                 ->label('Nombre Completo')
                 ->visible(fn() => $this->filters['tipo'] === 'alumno')
                 ->wrap()
-                ->searchable(['alumno.alu_vcNombre', 'alumno.alu_vcPaterno', 'alumno.alu_vcMaterno']),
+                ->searchable(['alumno.alu_vcNombre','alumno.alu_vcPaterno','alumno.alu_vcMaterno']),
             // Comunes
             TextColumn::make('local.localesMaestro.locma_vcNombre')->label('Local')->sortable()->searchable(),
             TextColumn::make('experienciaAdmision.maestro.expadmma_vcNombre')->label('Cargo')->sortable()->searchable(),
             TextColumn::make('usuario.name')->label('Usuario Asignador')->sortable(),
-        ];
+    ];
     }
 
    
@@ -423,7 +448,7 @@ class ReporteAsignados extends Page implements HasTable, HasForms
             $fechaAsignacion = $rec->proadm_dtFechaAsignacion ?? $rec->prodoc_dtFechaAsignacion ?? $rec->proalu_dtFechaAsignacion ?? null;
             if($tipo==='administrativo'){
                 return [
-            'nro'=>$idx+1,
+                    'Nro'=>$idx+1,
                     'Codigo'=>$rec->administrativo?->adm_vcCodigo ?? '',
                     'Dni'=>$rec->administrativo?->adm_vcDni ?? '',
                     'Nombres_Completos'=>$rec->administrativo?->adm_vcNombres ?? '',
@@ -431,7 +456,7 @@ class ReporteAsignados extends Page implements HasTable, HasForms
                     'Categoria'=>$rec->administrativo?->categoria?->cat_vcNombre ?? '',
                     'Condicion'=>$rec->administrativo?->condicion?->con_vcNombre ?? '',
                     'Celular'=>$rec->administrativo?->adm_vcCelular ?? '',
-                    'Email'=>$rec->administrativo?->adm_vcEmailUNMSM ?? $rec->administrativo?->adm_vcEmailPersonal ?? '',
+                    'Email'=>$rec->administrativo?->adm_vcEmailUNMSM ?? ($rec->administrativo?->adm_vcEmailPersonal ?? ''),
                     'Fecha_Examen'=>$fechaLabel,
                     'Local'=>$local,
                     'Cargo'=>$cargo,
@@ -449,7 +474,7 @@ class ReporteAsignados extends Page implements HasTable, HasForms
                     'Categoria'=>$rec->docente?->categoria?->cat_vcNombre ?? '',
                     'Condicion'=>$rec->docente?->condicion?->con_vcNombre ?? '',
                     'Celular'=>$rec->docente?->doc_vcCelular ?? '',
-                    'Email'=>$rec->docente?->doc_vcEmailUNMSM ?? $rec->docente?->doc_vcEmail ?? '',
+                    'Email'=>$rec->docente?->doc_vcEmailUNMSM ?? ($rec->docente?->doc_vcEmail ?? ''),
                     'Fecha_Examen'=>$fechaLabel,
                     'Local'=>$local,
                     'Cargo'=>$cargo,
@@ -459,12 +484,12 @@ class ReporteAsignados extends Page implements HasTable, HasForms
             }
             return [
                 'Nro'=>$idx+1,
-                'codigo'=>$rec->alumno?->alu_vcCodigo ?? '',
+                'Codigo'=>$rec->alumno?->alu_vcCodigo ?? '',
                 'Dni'=>$rec->alumno?->alu_vcDni ?? '',
                 'Nombres_Completos'=>$rec->alumno?->nombre_completo ?? '',
                 'Facultad'=>$rec->alumno?->fac_vcNombre ?? '',
                 'Celular'=>$rec->alumno?->alu_vcCelular ?? '',
-                'Email'=>$rec->alumno?->alu_vcEmail ?? $rec->alumno?->alu_vcEmailPer ?? '',
+                'Email'=>$rec->alumno?->alu_vcEmail ?? ($rec->alumno?->alu_vcEmailPer ?? ''),
                 'Fecha_Examen'=>$fechaLabel,
                 'Local'=>$local,
                 'Cargo'=>$cargo,
