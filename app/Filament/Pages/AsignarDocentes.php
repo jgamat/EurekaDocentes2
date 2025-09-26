@@ -68,27 +68,46 @@ class AsignarDocentes extends Page implements HasForms
                         );
                     }),
 
-                // SELECT 2: LOCAL (depende de la fecha)
                 Select::make('local_id')
                     ->label('2. Seleccione el Local')
-                    ->options(function (callable $get): Collection {
+                    ->options(function (callable $get): \Illuminate\Support\Collection {
                         $fechaId = $get('proceso_fecha_id');
                         if (!$fechaId) {
                             return collect();
                         }
-                        return Locales::where('profec_iCodigo', $fechaId)
-                            ->get()
-                            ->pluck('localesMaestro.locma_vcNombre', 'loc_iCodigo');
+
+                        $user = auth()->user();
+                        $docentesLocalesCargos = [2, 3, 4];
+
+                        $query = LocalCargo::query()
+                            ->select('localcargo.loc_iCodigo', 'lm.locma_vcNombre')
+                            ->join('experienciaadmision as ea', 'ea.expadm_iCodigo', '=', 'localcargo.expadm_iCodigo')
+                            ->join('locales as l', 'l.loc_iCodigo', '=', 'localcargo.loc_iCodigo')
+                            ->join('localMaestro as lm', 'lm.locma_iCodigo', '=', 'l.locma_iCodigo')
+                            ->where('ea.profec_iCodigo', $fechaId);
+
+                        // Filtro adicional: si el usuario tiene rol DocentesLocales, solo locales con cargos 2,3,4
+                        if ($user && $user->hasRole('DocentesLocales')) {
+                            $query->whereIn('ea.expadmma_iCodigo', $docentesLocalesCargos);
+                        }
+
+                        $rows = $query
+                            ->groupBy('localcargo.loc_iCodigo', 'lm.locma_vcNombre')
+                            ->orderBy('lm.locma_vcNombre')
+                            ->get();
+
+                        return $rows->pluck('locma_vcNombre', 'loc_iCodigo');
                     })
+                    ->preload()
+                    ->optionsLimit(1000)
                     ->searchable()
                     ->required()
                     ->reactive()
                     ->afterStateUpdated(function ($state, callable $get, callable $set) {
-                        // Al cambiar el local, reiniciar el cargo y limpiar la plaza
                         $set('experiencia_admision_id', null);
                         $this->plazaSeleccionada = null;
-                        // Notificar a la tabla del nuevo contexto (sin cargo aún)
-                        $this->dispatch('contextoActualizado',
+                        $this->dispatch(
+                            'contextoActualizado',
                             procesoFechaId: $get('proceso_fecha_id'),
                             localId: $state,
                             experienciaAdmisionId: null
@@ -153,38 +172,38 @@ class AsignarDocentes extends Page implements HasForms
                         );
                     }),
 
-                    TextInput::make('busqueda_docente')
-    ->label('Buscar y Asignar Docente')
-    ->id('busqueda_docente')
-    ->datalist(function (callable $get) {
-        $valor = $get('busqueda_docente');
-        if (!$valor || strlen($valor) < 2) {
-            return [];
-        }
-        return \App\Models\Docente::where('doc_iActivo', 1)
-            ->where(function ($query) use ($valor) {
-                $query->where('doc_vcNombre', 'like', "%{$valor}%")
-                    ->orWhere('doc_vcPaterno', 'like', "%{$valor}%")
-                    ->orWhere('doc_vcMaterno', 'like', "%{$valor}%")
-                    ->orWhere('doc_vcDni', 'like', "%{$valor}%")
-                    ->orWhere('doc_vcCodigo', 'like', "%{$valor}%");
-            })
-            ->limit(10)
-            ->get()
-            ->mapWithKeys(fn($docente) => [
-                "{$docente->nombre_completo} - {$docente->doc_vcDni} - {$docente->doc_vcCodigo}" =>
-                "{$docente->nombre_completo} - {$docente->doc_vcDni} - {$docente->doc_vcCodigo}"
-            ])
-            ->toArray();
-    })
-    ->autocomplete('off')
-    ->reactive()
-    ->afterStateUpdated(fn ($state, callable $get, $set) => $this->asignarDocenteDirecto()),
-
-                
-                Hidden::make('docente_id')
-                        ->id('docente_id')
-                        ->required(),
+                    Select::make('docente_id')
+                        ->label('Buscar y Asignar Docente')
+                        ->searchable()
+                        ->placeholder('Escribe nombre, DNI o código')
+                        ->getSearchResultsUsing(function (string $search): array {
+                            if (strlen($search) < 2) return [];
+                            return Docente::query()
+                                ->where('doc_iActivo', 1)
+                                ->where(function ($q) use ($search) {
+                                    $q->where('doc_vcNombre', 'like', "%{$search}%")
+                                      ->orWhere('doc_vcPaterno', 'like', "%{$search}%")
+                                      ->orWhere('doc_vcMaterno', 'like', "%{$search}%")
+                                      ->orWhere('doc_vcDni', 'like', "%{$search}%")
+                                      ->orWhere('doc_vcCodigo', 'like', "%{$search}%");
+                                })
+                                ->orderBy('doc_vcPaterno')
+                                ->limit(25)
+                                ->get()
+                                ->mapWithKeys(fn (Docente $d) => [
+                                    $d->doc_vcCodigo => $d->nombre_completo.' - '.$d->doc_vcDni.' - '.$d->doc_vcCodigo,
+                                ])
+                                ->toArray();
+                        })
+                        ->getOptionLabelUsing(function ($value): ?string {
+                            if (!$value) return null;
+                            $d = Docente::where('doc_vcCodigo', $value)->first();
+                            return $d ? ($d->nombre_completo.' - '.$d->doc_vcDni.' - '.$d->doc_vcCodigo) : $value;
+                        })
+                        ->reactive()
+                        ->afterStateUpdated(function ($state) {
+                            if ($state) { $this->asignarDocenteDirecto(); }
+                        }),
             ])
             ->statePath('data');
     }
@@ -193,7 +212,8 @@ class AsignarDocentes extends Page implements HasForms
     public function asignarDocenteDirecto(): void
 {
     $data = $this->form->getState();
-    $docente = Docente::where('doc_vcCodigo', $data['docente_id'])->first();
+    $codigo = $data['docente_id'] ?? null;
+    $docente = $codigo ? Docente::where('doc_vcCodigo', $codigo)->first() : null;
     if (!$docente) {
         Notification::make()
             ->title('Error')
@@ -206,7 +226,6 @@ class AsignarDocentes extends Page implements HasForms
     $currentState = $this->form->getState();
     $newState = array_merge($currentState, [
         'docente_id' => $docente->doc_vcCodigo,
-        'busqueda_docente' => $docente->nombre_completo,
     ]);
 
     // Validaciones
@@ -319,7 +338,6 @@ class AsignarDocentes extends Page implements HasForms
         'local_id' => $plaza->loc_iCodigo,
         'experiencia_admision_id' => $plaza->expadm_iCodigo,
         'docente_id' => null,
-        'busqueda_docente' => null,
     ]);
 }
 }

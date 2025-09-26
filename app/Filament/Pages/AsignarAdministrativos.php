@@ -66,13 +66,35 @@ class AsignarAdministrativos extends Page implements HasForms
                         if (!$fechaId) {
                             return collect();
                         }
-                        return Locales::where('profec_iCodigo', $fechaId)
-                            ->get()
-                            ->pluck('localesMaestro.locma_vcNombre', 'loc_iCodigo');
+
+                        $rows = LocalCargo::query()
+                            ->select('localcargo.loc_iCodigo', 'lm.locma_vcNombre')
+                            ->join('experienciaadmision as ea', 'ea.expadm_iCodigo', '=', 'localcargo.expadm_iCodigo')
+                            ->join('locales as l', 'l.loc_iCodigo', '=', 'localcargo.loc_iCodigo')
+                            ->join('localMaestro as lm', 'lm.locma_iCodigo', '=', 'l.locma_iCodigo')
+                            ->where('ea.profec_iCodigo', $fechaId)
+                            ->groupBy('localcargo.loc_iCodigo', 'lm.locma_vcNombre')
+                            ->orderBy('lm.locma_vcNombre')
+                            ->get();
+
+                        return $rows->pluck('locma_vcNombre', 'loc_iCodigo');
                     })
+                    ->preload()
+                    ->optionsLimit(1000)
                     ->searchable()
                     ->required()
-                    ->reactive(),
+                    ->reactive()
+                    ->afterStateUpdated(function ($state, callable $get, callable $set) {
+                        // Al cambiar local reiniciar cargo y plaza
+                        $set('experiencia_admision_id', null);
+                        $this->plazaSeleccionada = null;
+                        $this->dispatch(
+                            'contextoActualizado',
+                            procesoFechaId: $get('proceso_fecha_id'),
+                            localId: $state,
+                            experienciaAdmisionId: null
+                        );
+                    }),
 
                 // 3. Cargo dependiente del local (excluye códigos 2,3,4 para todos los roles)
                 Select::make('experiencia_admision_id')
@@ -113,40 +135,35 @@ class AsignarAdministrativos extends Page implements HasForms
                         );
                     }),
 
-                // 4. Búsqueda y asignación rápida
-                TextInput::make('busqueda_administrativo')
+                // 4. Búsqueda y asignación rápida (Select dinámico)
+                Select::make('administrativo_dni')
                     ->label('Buscar y Asignar Administrativo')
-                    ->id('busqueda_administrativo')
-                    ->placeholder('Nombres, DNI o Código')
-                    ->datalist(function (callable $get) {
-                        $valor = $get('busqueda_administrativo');
-                        if (!$valor || strlen($valor) < 2) {
-                            return [];
-                        }
+                    ->searchable()
+                    ->placeholder('Escribe nombre, DNI o código')
+                    ->getSearchResultsUsing(function (string $search): array {
+                        if (strlen($search) < 2) return [];
                         return Administrativo::query()
-                            ->where(function ($q) use ($valor) {
-                                $q->where('adm_vcNombres', 'like', "%{$valor}%")
-                                  ->orWhere('adm_vcDni', 'like', "%{$valor}%")
-                                  ->orWhere('adm_vcCodigo', 'like', "%{$valor}%");
+                            ->where(function ($q) use ($search) {
+                                $q->where('adm_vcNombres', 'like', "%{$search}%")
+                                  ->orWhere('adm_vcDni', 'like', "%{$search}%")
+                                  ->orWhere('adm_vcCodigo', 'like', "%{$search}%");
                             })
-                            ->limit(10)
+                            ->orderBy('adm_vcNombres')
+                            ->limit(25)
                             ->get()
-                            ->mapWithKeys(fn ($adm) => [
-                                "{$adm->adm_vcNombres} - {$adm->adm_vcDni} - {$adm->adm_vcCodigo}" =>
-                                "{$adm->adm_vcNombres} - {$adm->adm_vcDni} - {$adm->adm_vcCodigo}",
+                            ->mapWithKeys(fn (Administrativo $a) => [
+                                $a->adm_vcDni => $a->adm_vcNombres.' - '.$a->adm_vcDni.' - '.$a->adm_vcCodigo,
                             ])
                             ->toArray();
                     })
-                    ->autocomplete('off')
-                    ->reactive(),
-
-                Hidden::make('administrativo_dni')
-                    ->id('administrativo_dni')
+                    ->getOptionLabelUsing(function ($value): ?string {
+                        if (!$value) return null;
+                        $a = Administrativo::where('adm_vcDni', $value)->first();
+                        return $a ? ($a->adm_vcNombres.' - '.$a->adm_vcDni.' - '.$a->adm_vcCodigo) : $value;
+                    })
+                    ->reactive()
                     ->afterStateUpdated(function ($state) {
-                        // Cuando el DNI queda definido (por selección del datalist), intenta asignar
-                        if (filled($state)) {
-                            $this->asignarAdministrativoDirecto();
-                        }
+                        if ($state) { $this->asignarAdministrativoDirecto(); }
                     }),
             ])
             ->statePath('data');
@@ -156,17 +173,8 @@ class AsignarAdministrativos extends Page implements HasForms
     {
         $data = $this->form->getState();
 
-        // Determinar DNI desde hidden o parsear el texto del datalist
+        // El DNI llega directamente desde el Select searchable
         $dni = $data['administrativo_dni'] ?? null;
-        if (!$dni && !empty($data['busqueda_administrativo'])) {
-            $parts = array_map('trim', explode('-', $data['busqueda_administrativo']));
-            if (count($parts) >= 2) {
-                $dniCandidate = $parts[1];
-                if (preg_match('/^\d{8}$/', $dniCandidate)) {
-                    $dni = $dniCandidate;
-                }
-            }
-        }
 
         $administrativo = $dni ? Administrativo::where('adm_vcDni', $dni)->first() : null;
         if (!$administrativo) {
@@ -214,6 +222,23 @@ class AsignarAdministrativos extends Page implements HasForms
             ->where('adm_vcDni', $dni)
             ->where('proadm_iAsignacion', 1)
             ->first();
+
+        // Nueva validación global: el administrativo no debe tener ya una asignación activa en la misma fecha (sin importar local/cargo)
+        $asignacionActivaMismaFecha = ProcesoAdministrativo::where('profec_iCodigo', $data['proceso_fecha_id'])
+            ->where('adm_vcDni', $dni)
+            ->where('proadm_iAsignacion', 1)
+            ->first();
+
+        if ($asignacionActivaMismaFecha) {
+            $locNombreExist = optional($asignacionActivaMismaFecha->local?->localesMaestro)->locma_vcNombre ?? 'Local desconocido';
+            $cargoNombreExist = optional($asignacionActivaMismaFecha->experienciaAdmision?->maestro)->expadmma_vcNombre ?? 'Cargo desconocido';
+            Notification::make()
+                ->title('Asignación Bloqueada')
+                ->body("El administrativo {$administrativo->adm_vcNombres} ya está asignado en la fecha seleccionada ({$locNombreExist} - {$cargoNombreExist}).")
+                ->danger()
+                ->send();
+            return;
+        }
 
         if ($asignacionExistente) {
             $localNombre = $plaza->localesMaestro->locma_vcNombre ?? 'Local desconocido';
@@ -283,7 +308,6 @@ class AsignarAdministrativos extends Page implements HasForms
             'local_id' => $plaza->loc_iCodigo,
             'experiencia_admision_id' => $plaza->expadm_iCodigo,
             'administrativo_dni' => null,
-            'busqueda_administrativo' => null,
         ]);
 
         // notificar al componente Livewire de tabla para refrescar

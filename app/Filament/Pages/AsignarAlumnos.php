@@ -7,9 +7,7 @@ use App\Models\LocalCargo;
 use App\Models\Locales;
 use App\Models\ProcesoAlumno;
 use App\Models\ProcesoFecha;
-use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
@@ -60,20 +58,43 @@ class AsignarAlumnos extends Page implements HasForms
                     ->reactive(),
 
                 // 2. Local dependiente de la fecha
-                Select::make('local_id')
+               Select::make('local_id')
                     ->label('2. Seleccione el Local')
                     ->options(function (callable $get): Collection {
                         $fechaId = $get('proceso_fecha_id');
                         if (!$fechaId) {
                             return collect();
                         }
-                        return Locales::where('profec_iCodigo', $fechaId)
-                            ->get()
-                            ->pluck('localesMaestro.locma_vcNombre', 'loc_iCodigo');
+
+                        $rows = LocalCargo::query()
+                            ->select('localcargo.loc_iCodigo', 'lm.locma_vcNombre')
+                            ->join('experienciaadmision as ea', 'ea.expadm_iCodigo', '=', 'localcargo.expadm_iCodigo')
+                            ->join('locales as l', 'l.loc_iCodigo', '=', 'localcargo.loc_iCodigo')
+                            ->join('localMaestro as lm', 'lm.locma_iCodigo', '=', 'l.locma_iCodigo')
+                            ->where('ea.profec_iCodigo', $fechaId)
+                            ->groupBy('localcargo.loc_iCodigo', 'lm.locma_vcNombre')
+                            ->orderBy('lm.locma_vcNombre')
+                            ->get();
+
+                        return $rows->pluck('locma_vcNombre', 'loc_iCodigo');
                     })
+                    ->preload()
+                    ->optionsLimit(1000)
                     ->searchable()
                     ->required()
-                    ->reactive(),
+                    ->reactive()
+                    ->afterStateUpdated(function ($state, callable $get, callable $set) {
+                        // Al cambiar local, reiniciar cargo y plaza
+                        $set('experiencia_admision_id', null);
+                        $this->plazaSeleccionada = null;
+                        $this->dispatch(
+                            'contextoActualizado',
+                            procesoFechaId: $get('proceso_fecha_id'),
+                            localId: $state,
+                            experienciaAdmisionId: null
+                        );
+                    }),
+
 
                 // 3. Cargo dependiente del local (excluye códigos 2,3,4 para todos los roles)
                 Select::make('experiencia_admision_id')
@@ -113,41 +134,37 @@ class AsignarAlumnos extends Page implements HasForms
                         );
                     }),
 
-                // 4. Búsqueda y asignación rápida
-                TextInput::make('busqueda_alumno')
+                // 4. Búsqueda y asignación rápida (Select asíncrono)
+                Select::make('alumno_codigo')
                     ->label('Buscar y Asignar Alumno')
-                    ->id('busqueda_alumno')
-                    ->placeholder('Apellidos, Nombres, DNI o Código')
-                    ->datalist(function (callable $get) {
-                        $valor = $get('busqueda_alumno');
-                        if (!$valor || strlen($valor) < 2) {
-                            return [];
-                        }
+                    ->placeholder('Escribe apellidos, nombres, DNI o código')
+                    ->searchable()
+                    ->getSearchResultsUsing(function (string $search): array {
+                        if (strlen($search) < 2) return [];
                         return Alumno::query()
-                            ->where(function ($q) use ($valor) {
-                                $q->where('alu_vcNombre', 'like', "%{$valor}%")
-                                  ->orWhere('alu_vcPaterno', 'like', "%{$valor}%")
-                                  ->orWhere('alu_vcMaterno', 'like', "%{$valor}%")
-                                  ->orWhere('alu_vcDni', 'like', "%{$valor}%")
-                                  ->orWhere('alu_vcCodigo', 'like', "%{$valor}%");
+                            ->where(function ($q) use ($search) {
+                                $q->where('alu_vcNombre', 'like', "%{$search}%")
+                                  ->orWhere('alu_vcPaterno', 'like', "%{$search}%")
+                                  ->orWhere('alu_vcMaterno', 'like', "%{$search}%")
+                                  ->orWhere('alu_vcDni', 'like', "%{$search}%")
+                                  ->orWhere('alu_vcCodigo', 'like', "%{$search}%");
                             })
-                            ->limit(10)
+                            ->orderBy('alu_vcPaterno')
+                            ->limit(25)
                             ->get()
-                            ->mapWithKeys(fn ($alu) => [
-                                "{$alu->nombre_completo} - {$alu->alu_vcDni} - {$alu->alu_vcCodigo}" =>
-                                "{$alu->nombre_completo} - {$alu->alu_vcDni} - {$alu->alu_vcCodigo}",
+                            ->mapWithKeys(fn(Alumno $a) => [
+                                $a->alu_vcCodigo => $a->nombre_completo.' - '.$a->alu_vcDni.' - '.$a->alu_vcCodigo,
                             ])
                             ->toArray();
                     })
-                    ->autocomplete('off')
-                    ->reactive(),
-
-                Hidden::make('alumno_codigo')
-                    ->id('alumno_codigo')
+                    ->getOptionLabelUsing(function ($value): ?string {
+                        if (!$value) return null;
+                        $a = Alumno::where('alu_vcCodigo', $value)->first();
+                        return $a ? ($a->nombre_completo.' - '.$a->alu_vcDni.' - '.$a->alu_vcCodigo) : $value;
+                    })
+                    ->reactive()
                     ->afterStateUpdated(function ($state) {
-                        if (filled($state)) {
-                            $this->asignarAlumnoDirecto();
-                        }
+                        if ($state) { $this->asignarAlumnoDirecto(); }
                     }),
             ])
             ->statePath('data');
@@ -157,7 +174,7 @@ class AsignarAlumnos extends Page implements HasForms
     {
         $data = $this->form->getState();
 
-        $codigo = $data['alumno_codigo'] ?? null;
+    $codigo = $data['alumno_codigo'] ?? null; // ahora proviene directamente del Select searchable
         $alumno = $codigo ? Alumno::where('alu_vcCodigo', $codigo)->first() : null;
         if (!$alumno) {
             Notification::make()
@@ -195,24 +212,26 @@ class AsignarAlumnos extends Page implements HasForms
             return;
         }
 
-        $asignacionExistente = ProcesoAlumno::where('profec_iCodigo', $data['proceso_fecha_id'])
-            ->where('loc_iCodigo', $data['local_id'])
-            ->where('expadm_iCodigo', $data['experiencia_admision_id'])
+        
+
+        // Nueva validación global: el alumno no debe tener ya una asignación activa en la misma fecha (sin importar local/cargo)
+        $asignacionActivaMismaFecha = ProcesoAlumno::where('profec_iCodigo', $data['proceso_fecha_id'])
             ->where('alu_vcCodigo', $codigo)
             ->where('proalu_iAsignacion', 1)
             ->first();
 
-        if ($asignacionExistente) {
-            $localNombre = $plaza->localesMaestro->locma_vcNombre ?? 'Local desconocido';
-            $cargoNombre = $plaza->maestro->expadmma_vcNombre ?? 'Cargo desconocido';
-
+        if ($asignacionActivaMismaFecha) {
+            $locNombreExist = optional($asignacionActivaMismaFecha->local?->localesMaestro)->locma_vcNombre ?? 'Local desconocido';
+            $cargoNombreExist = optional($asignacionActivaMismaFecha->experienciaAdmision?->maestro)->expadmma_vcNombre ?? 'Cargo desconocido';
             Notification::make()
                 ->title('Asignación Bloqueada')
-                ->body("El alumno {$alumno->nombre_completo} ya está asignado en esta fecha en el {$localNombre} - {$cargoNombre}.")
+                ->body("El alumno {$alumno->nombre_completo} ya está asignado en la fecha seleccionada ({$locNombreExist} - {$cargoNombreExist}).")
                 ->danger()
                 ->send();
             return;
         }
+
+       
 
         if (($plaza->loccar_iOcupado ?? 0) >= ($plaza->loccar_iVacante ?? 0)) {
             Notification::make()
@@ -267,7 +286,6 @@ class AsignarAlumnos extends Page implements HasForms
             'local_id' => $plaza->loc_iCodigo,
             'experiencia_admision_id' => $plaza->expadm_iCodigo,
             'alumno_codigo' => null,
-            'busqueda_alumno' => null,
         ]);
 
         $this->dispatch(
