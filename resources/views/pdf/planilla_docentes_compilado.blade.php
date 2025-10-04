@@ -2,9 +2,9 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Planilla Docentes</title>
+    <title>Planilla Personal</title>
     <style>
-    @page { margin: 40px 50px 40px 45px; }
+    @page { margin: 20px 100px 40px 45px; }
         body { font-family: DejaVu Sans, sans-serif; font-size: 10px; }
         .bg { position: fixed; top:0; left:0; right:0; bottom:0; z-index: -1; }
         .bg img { width: 100%; height: 100%; object-fit: cover; }
@@ -14,11 +14,16 @@
         table { width:100%; border-collapse: collapse; table-layout: auto; }
     th, td { border: 1px solid #000; padding: 2px; vertical-align: top; }
         td { line-height: 1.1; white-space: normal; word-break: break-word; overflow-wrap: break-word; }
-    tbody tr { page-break-inside: avoid; }
+    /* Quitar evitación forzada de salto dentro de cada fila; permitimos que DOMPDF empaquete varias filas */
+    /* tbody tr { page-break-inside: avoid; } */
+    .tabla-detalle tbody tr { page-break-inside: auto; }
         th { background: #eee; }
         .firma { height: 28px; }
         .resumen-total { text-align: right; font-weight: bold; }
         .content { position: relative; }
+
+        .tabla-detalle tbody td { border: 0 !important; }
+        .tabla-detalle thead th { border: 1px solid #000 !important; }
     </style>
 </head>
 <body>
@@ -28,7 +33,7 @@
             <!-- Línea 1: izquierda UNMSM, derecha info en una sola línea -->
         <div style="position:relative; width:100%;">
                 <div style="font-weight:bold;">UNIVERSIDAD NACIONAL MAYOR DE SAN MARCOS</div>
-                <div style="position:absolute; top:0; right:0; font-size: 9px;">
+                <div style="position:absolute; top:0; right:0; font-size: 11px;">
             Página: {{ $p['page_no'] ?? '' }} 
                     &nbsp; | &nbsp;
                     Fecha: {{ \Carbon\Carbon::parse($fecha_proceso)->format('d/m/Y') }}
@@ -62,48 +67,46 @@
             <div class="content">
                 <div style="margin-bottom:6px;">
                     <strong>Local:</strong> {{ $p['local_nombre'] }}
-                    &nbsp; | &nbsp;
-                    <strong>Cargo:</strong> {{ $p['cargo_nombre'] }}
-                    @unless((!empty($es_tercero_cas) && $es_tercero_cas) || (!empty($es_alumno) && $es_alumno))
+                    @if((empty($es_admin) || !$es_admin) && (empty($es_alumno) || !$es_alumno))
                         &nbsp; | &nbsp;
-                        <strong>Monto:</strong> {{ number_format($p['monto_cargo'],2) }}
-                    @endunless
+                        <strong>Cargo:</strong> {{ $p['cargo_nombre'] }}
+                        @unless(!empty($es_tercero_cas) && $es_tercero_cas)
+                            &nbsp; | &nbsp;
+                            <strong>Monto:</strong> {{ number_format($p['monto_cargo'],2) }}
+                        @endunless
+                    @endif
                 </div>
-                <table>
+                <table class="tabla-detalle">
                     <thead>
                         <tr>
                             <th style="width:2%">N°</th>
                             @unless(!empty($es_tercero_cas) && $es_tercero_cas)
                                 <th style="width:5%">Código</th>
                             @endunless
-                            @unless(!empty($es_alumno) && $es_alumno)
-                                <th style="width:6%">Documento</th>
-                            @endunless
-                            @unless(!empty($es_tercero_cas) && $es_tercero_cas)
-                                <th style="width:6%">Credencial</th>
-                            @endunless
+                            <th style="width:{{ (!empty($es_alumno) && $es_alumno) ? '8%' : '6%' }}">Documento</th>
                             <th style="width:
                                 {{ (!empty($es_tercero_cas) && $es_tercero_cas)
-                                    ? '24%'
-                                    : ((!empty($es_alumno) && $es_alumno) ? '24%' : '23%')
+                                    ? '26%'
+                                    : ((!empty($es_alumno) && $es_alumno) ? '34%' : '29%')
                                 }}
                             ">Apellidos y Nombres</th>
                             <th style="width:
                                 {{ (!empty($es_tercero_cas) && $es_tercero_cas)
-                                    ? '30%'
-                                    : ((!empty($es_alumno) && $es_alumno) ? '30%' : '16%')
+                                    ? '26%'
+                                    : ((!empty($es_alumno) && $es_alumno) ? '20%' : '16%')
                                 }}
                             ">Local</th>
                             <th style="width:
                                 {{ (!empty($es_tercero_cas) && $es_tercero_cas)
-                                    ? '30%'
-                                    : ((!empty($es_alumno) && $es_alumno) ? '30%' : '16%')
+                                    ? '26%'
+                                    : ((!empty($es_alumno) && $es_alumno) ? '20%' : '16%')
                                 }}
                             ">Cargo</th>
                             @unless((!empty($es_tercero_cas) && $es_tercero_cas) || (!empty($es_alumno) && $es_alumno))
                                 <th style="width:4%">Monto</th>
                             @endunless
-                            <th style="width:8%">Firma</th>
+                            <!-- Ajuste: se incrementa ancho de Firma de 8% a 12%; se reduce proporcionalmente Apellidos y Nombres -->
+                            <th style="width:12%">Firma</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -113,35 +116,37 @@
                                 @unless(!empty($es_tercero_cas) && $es_tercero_cas)
                                     <td>{{ $r['codigo'] }}</td>
                                 @endunless
-                                @unless(!empty($es_alumno) && $es_alumno)
-                                    <td>{{ $r['dni'] }}</td>
-                                @endunless
-                                @unless(!empty($es_tercero_cas) && $es_tercero_cas)
-                                    <td>{{ $r['cred_numero'] }}</td>
-                                @endunless
+                                <td>{{ $r['dni'] }}</td>
                                 <td>{{ $r['nombres'] }}</td>
                                 <td>{{ $r['local_nombre'] }}</td>
                                 <td>{{ $r['cargo_nombre'] }}</td>
                                 @unless((!empty($es_tercero_cas) && $es_tercero_cas) || (!empty($es_alumno) && $es_alumno))
                                     <td style="text-align:right;">{{ number_format($r['monto'],2) }}</td>
                                 @endunless
-                                <td class="firma"></td>
+                                <td class="firma" style="position:relative; vertical-align:bottom;">
+                                    <div style="position:absolute; left:2%; right:2%; bottom:3px; border-bottom:1px solid #000; height:0; line-height:0;">
+                                        &nbsp;
+                                    </div>
+                                </td>
                             </tr>
                         @endforeach
                     </tbody>
                 </table>
+                @if(!empty($p['is_last_detail']) && ((!empty($es_admin) && $es_admin) || (!empty($es_docente) && $es_docente)))
+                    <div style="margin-top:4px; font-weight:bold; text-align:right;">Monto por local: {{ number_format($p['total_local'] ?? 0,2) }}</div>
+                @endif
 
-                <div style="position: fixed; bottom: 10px; left: 25px; right: 25px;">
-                    <table style="width:100%;">
+                <div style="position: fixed; bottom: 12px; left: 25px; right: 25px; font-size:11px;">
+                    <table style="width:100%; border:0; border-collapse:collapse;">
                         <tr>
-                            <td style="width:50%; height:60px; vertical-align:bottom; text-align:center;">
-                                ________________________________<br>
-                                Dr. Domingo Guzman Chumpitaz Ramos<br>
+                            <td style="width:50%; text-align:center; height:60px; vertical-align:bottom; border:0;">
+                                ___________________________________<br>
+                                {{ $profec_vcFimaDirector ?? '_________________________' }}<br>
                                 Director General Oficina Admisión
                             </td>
-                            <td style="width:50%; height:60px; vertical-align:bottom; text-align:center;">
+                            <td style="width:50%; text-align:center; height:60px; vertical-align:bottom; border:0;">
                                 ________________________________<br>
-                                C.P. Diana Ines Cirineo Rosales<br>
+                                {{ $profec_vcFimaJefe ?? '_________________________' }}<br>
                                 Jefe Oficina de Economía
                             </td>
                         </tr>
@@ -161,39 +166,65 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>Cargo</th>
-                            <th>Cantidad</th>
-                            <th>Monto</th>
-                            <th>Subtotal</th>
+                            <th style="text-align:left;">Cargo</th>
+                            <th style="text-align:center;">Cantidad</th>
+                            <th style="text-align:center;">Monto</th>
+                            <th style="text-align:center;">Subtotal</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach($p['resumen'] as $item)
                             <tr>
                                 <td>{{ $item['cargo_nombre'] }}</td>
-                                <td style="text-align:right;">{{ $item['cantidad'] }}</td>
-                                <td style="text-align:right;">{{ number_format($item['monto'],2) }}</td>
-                                <td style="text-align:right;">{{ number_format($item['subtotal'],2) }}</td>
+                                <td style="text-align:center;">{{ $item['cantidad'] }}</td>
+                                <td style="text-align:center;">{{ number_format($item['monto'],2) }}</td>
+                                <td style="text-align:center;">{{ number_format($item['subtotal'],2) }}</td>
                             </tr>
                         @endforeach
                         <tr>
-                            <td colspan="3" class="resumen-total">Total por local</td>
-                            <td style="text-align:right;">{{ number_format($p['gran_total'],2) }}</td>
+                            <td colspan="3" class="resumen-total" style="text-align:right;">Total por local</td>
+                            <td style="text-align:center;">{{ number_format($p['gran_total'],2) }}</td>
                         </tr>
                     </tbody>
                 </table>
 
-                <div style="position: fixed; bottom: 10px; left: 25px; right: 25px;">
-                    <table style="width:100%;">
+                <!-- Reubicado: bloque Jefe de Unidad y Observaciones se renderiza fijo cerca del footer -->
+                <div style="position:fixed; left:25px; right:25px; bottom:140px; font-size:11px;"> <!-- bottom antes:110px -->
+                    <table style="width:100%; border-collapse:collapse;">
                         <tr>
-                            <td style="width:50%; height:60px; vertical-align:bottom; text-align:center;">
-                                ________________________________<br>
-                                Dr. Victor Ricardo Masuda Toyofuku<br>
+                            <th colspan="3" style="text-align:left; background:#f5f5f5; border:1px solid #000; padding:6px 8px;">Jefe de Unidad</th>
+                        </tr>
+                        <tr>
+                            <th style="width:55%; border:1px solid #000; padding:4px 6px;">Apellidos y Nombres</th>
+                            <th style="width:20%; border:1px solid #000; padding:4px 6px;">Firma</th>
+                            <th style="width:25%; border:1px solid #000; padding:4px 6px;">Fecha y Hora</th>
+                        </tr>
+                        <tr style="height:50px;">
+                            <td style="border:1px solid #000; padding:10px 12px;">&nbsp;</td>
+                            <td style="border:1px solid #000; position:relative; padding:10px 12px;">
+                                <div style="position:absolute; left:8%; right:8%; bottom:6px; border-bottom:1px solid #000; height:0;">&nbsp;</div>
+                            </td>
+                            <td style="border:1px solid #000; position:relative; padding:10px 12px;">
+                                <div style="position:absolute; left:8%; right:8%; bottom:6px; border-bottom:1px solid #000; height:0;">&nbsp;</div>
+                            </td>
+                        </tr>
+                    </table>
+                    <div style="margin-top:10px; font-weight:bold;">Observaciones:</div>
+                    <div style="width:100%; border-bottom:1px solid #000; height:14px; margin-top:4px;"></div>
+                    <div style="width:100%; border-bottom:1px solid #000; height:14px; margin-top:6px;"></div>
+                </div>
+
+                <div style="position: fixed; bottom: 12px; left: 25px; right: 25px; font-size:11px;">
+                    <table style="width:100%; border:0; border-collapse:collapse;">
+                        <tr>
+                            <td style="width:50%; text-align:center; height:60px; vertical-align:bottom; border:0;">
+                                ___________________________________<br>
+                                {{ $profec_vcFimaDirector ?? '_________________________' }}<br>
                                 Director General Oficina Admisión
                             </td>
-                            <td style="width:50%; height:60px; vertical-align:bottom; text-align:center;">
+                            <td style="width:50%; text-align:center; height:60px; vertical-align:bottom; border:0;">
                                 ________________________________<br>
-                                C.P. Diana Ines Cirineo Rosales<br>
+                                {{ $profec_vcFimaJefe ?? '_________________________' }}<br>
                                 Jefe Oficina de Economía
                             </td>
                         </tr>

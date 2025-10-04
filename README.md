@@ -83,3 +83,37 @@ We welcome contributions! Feel free to open issues, submit PRs, or suggest impro
 
 
 ### 🚀 Happy Coding with Laravel & Filament! 🎉
+
+## 📊 Historial de Montos (Extensión Personalizada)
+
+Esta instalación incluye una funcionalidad personalizada para gestionar y auditar montos asociados a *cargos* en procesos de admisión.
+
+### Flujo Principal
+1. Desde la página **Consultar Cargos** se puede exportar un Excel con los cargos utilizados y sus montos vigentes.
+2. Ese archivo puede editarse (columna de monto) y luego importarse en **Importar Cargos (Actualizar Montos)**.
+3. Cada cambio aplicado genera un registro persistente en la tabla `cargo_monto_historial`.
+4. La página **Historial de Montos** permite filtrar y exportar estos cambios.
+
+### Página: Historial de Montos
+Ruta de clase: `App\Filament\Pages\ConsultarHistorialMontos`  
+Muestra columnas:
+- Fecha/Hora Aplicado
+- Código y Nombre de Cargo
+- Monto Anterior / Monto Nuevo / Diferencia
+- Usuario (si existía sesión autenticada en el momento del cambio)
+- Archivo Original (nombre del Excel de origen)
+- Fuente (ej: `import_excel`)
+
+Filtros disponibles:
+- Rango de fechas de aplicación
+- Usuario
+- Código de cargo
+
+### Auditoría Persistente
+Tabla: `cargo_monto_historial`  
+Campos clave: `expadm_iCodigo`, `monto_anterior`, `monto_nuevo`, `user_id`, `archivo_original`, `fuente`, `aplicado_en`.
+
+### Exportación
+La página ofrece un botón “Exportar Excel” que genera un archivo con las filas filtradas (máx. 20k registros por ejecución para evitar consumo excesivo de memoria).
+
+> Nota: Esta sección documenta únicamente la extensión añadida para gestión de montos y su auditoría. El resto del README corresponde al starter kit base.

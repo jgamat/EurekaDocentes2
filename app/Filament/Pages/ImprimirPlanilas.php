@@ -401,8 +401,17 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
             $proceso = Proceso::find($procesoId);
             $fecha = ProcesoFecha::find($fechaId);
             $tipo = Tipo::find($tipoId);
-            $tituloPlanilla = $tipo?->tipo_vcNombrePlanilla
+            // Calcular número de lote actual (count + 1) y si es adicional
+            $loteActual = Planilla::where('pro_iCodigo', $procesoId)
+                ->where('profec_iCodigo', $fechaId)
+                ->where('tipo_iCodigo', $tipoId)
+                ->where('pla_bActivo', true)
+                ->count() + 1;
+            $esAdicional = $loteActual > 1;
+
+            $tituloPlanillaBase = $tipo?->tipo_vcNombrePlanilla
                 ?: 'PLANILLA DE ASIGNACIÓN DE PERSONAL DOCENTE PERMANENTE, ASISTENCIA Y PAGO DE SUBVENCIÓN';
+            $tituloPlanilla = $esAdicional ? ($tituloPlanillaBase . ' - ADICIONAL') : $tituloPlanillaBase;
 
             // Construir dataset de docentes asignados agrupado por local y cargo
             $rows = ProcesoDocente::query()
@@ -469,7 +478,7 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
                 $cargoNombre = optional($coleccionCargo->first())->cargo_nombre;
                 $montoCargo = (float) optional($coleccionCargo->first())->monto;
         $ordenCargo = 1; // numeración por cargo que continúa entre páginas
-                $chunks = $coleccionCargo->values()->chunk(13); // 13 por hoja
+                $chunks = $coleccionCargo->values()->chunk(15); // 15 por hoja (ajuste global)
         foreach ($chunks as $chunk) {
                     $page = [
                         'type' => 'detail',
@@ -480,8 +489,10 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
                         'monto_cargo' => $montoCargo,
                         'planilla_numero' => $numeroPlanillaLocal,
                         'page_no' => $paginaActual,
-            'rows' => $chunk->map(function ($r) use ($locId, $expId) {
+            // Incluir orden creciente por cargo para que no se reinicie tras salto de página
+            'rows' => $chunk->map(function ($r) use (&$ordenCargo, $locId, $expId) {
                             return [
+                                'orden' => $ordenCargo++,
                                 'codigo' => $r->codigo,
                                 'dni' => $r->dni,
                                 'nombres' => $r->nombres,
@@ -497,6 +508,30 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
                     $pages[] = $page;
                     $pagesLocal[] = $page;
                     $paginaActual++;
+                }
+            }
+
+            // Calcular total por local y marcar última página de detalle para mostrar "Monto por local"
+            $totalLocal = $coleccionLocal->sum(function ($r) {
+                return (float) $r->monto;
+            });
+            // Buscar índice de la última página de detalle dentro de pagesLocal
+            for ($i = count($pagesLocal) - 1; $i >= 0; $i--) {
+                if (($pagesLocal[$i]['type'] ?? null) === 'detail') {
+                    $pagesLocal[$i]['is_last_detail'] = true;
+                    $pagesLocal[$i]['total_local'] = $totalLocal;
+                    // Reflejar también en $pages (arrays se copian por valor, no por referencia)
+                    for ($j = count($pages) - 1; $j >= 0; $j--) {
+                        $pp = $pages[$j] ?? null;
+                        if (($pp['type'] ?? null) === 'detail'
+                            && ($pp['local_id'] ?? null) === $locId
+                            && ($pp['planilla_numero'] ?? null) === $numeroPlanillaLocal) {
+                            $pages[$j]['is_last_detail'] = true;
+                            $pages[$j]['total_local'] = $totalLocal;
+                            break;
+                        }
+                    }
+                    break;
                 }
             }
 
@@ -552,6 +587,9 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
             'titulo_planilla' => $tituloPlanilla,
             'pages' => $pages,
             'total_pages' => $totalPages,
+            'es_docente' => true,
+            'profec_vcFimaDirector' => $fecha?->profec_vcFimaDirector,
+            'profec_vcFimaJefe' => $fecha?->profec_vcFimaJefe,
         ];
 
     // Si existe al menos uno de los templates PDF, usar FPDI (para páginas sin template, se dibuja sin fondo pero con header/pie nuevos)
@@ -570,6 +608,8 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
                 'fecha_proceso' => optional($fecha)->profec_dFecha,
                 'impresion_fecha' => now()->toDateTimeString(),
                 'titulo_planilla' => $tituloPlanilla,
+                'profec_vcFimaDirector' => $fecha?->profec_vcFimaDirector,
+                'profec_vcFimaJefe' => $fecha?->profec_vcFimaJefe,
             ];
             $generator = new \App\Services\PlanillaPdfGenerator();
             $content = $generator->buildDocentesPdf($pages, $header, $tplDetalle, $tplResumen);
@@ -601,7 +641,8 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
                     'pla_iNumero' => $pl['numero'],
                     'pla_iPaginaInicio' => $pl['pagina_inicio'],
                     'pla_IPaginaFin' => $pl['pagina_fin'],
-                    'pla_iAdicional' => false,
+                    'pla_iLote' => $loteActual,
+                    'pla_iAdicional' => $esAdicional,
                     'pla_iVersion' => 1,
                     'pla_bActivo' => true,
                     'user_id' => $user?->id,
@@ -635,6 +676,11 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
             return;
         }
 
+        Notification::make()
+            ->title($esAdicional ? 'Planillas generadas (ADICIONAL)' : 'Planillas generadas')
+            ->success()
+            ->body('Se generó el PDF de planillas de docentes correctamente.')
+            ->send();
         return response()->streamDownload(function () use ($content) {
             echo $content;
         }, $downloadName, [
@@ -755,7 +801,14 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
             $proceso = Proceso::find($procesoId);
             $fecha = ProcesoFecha::find($fechaId);
             $tipo = Tipo::find($tipoId);
-            $tituloPlanilla = $tipo?->tipo_vcNombrePlanilla ?: 'PLANILLA DE ASIGNACIÓN DE PERSONAL ADMINISTRATIVO, ASISTENCIA Y PAGO DE SUBVENCIÓN';
+            $loteActual = Planilla::where('pro_iCodigo', $procesoId)
+                ->where('profec_iCodigo', $fechaId)
+                ->where('tipo_iCodigo', $tipoId)
+                ->where('pla_bActivo', true)
+                ->count() + 1;
+            $esAdicional = $loteActual > 1;
+            $tituloPlanillaBase = $tipo?->tipo_vcNombrePlanilla ?: 'PLANILLA DE ASIGNACIÓN DE PERSONAL ADMINISTRATIVO, ASISTENCIA Y PAGO DE SUBVENCIÓN';
+            $tituloPlanilla = $esAdicional ? ($tituloPlanillaBase . ' - ADICIONAL') : $tituloPlanillaBase;
             $tipoNombre = mb_strtolower($tipo?->tipo_vcNombre ?? '');
             $isTerceroCas = str_contains($tipoNombre, 'tercero') || str_contains($tipoNombre, 'cas');
 
@@ -814,29 +867,55 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
                 // Numeración por local para Tercero/CAS
                 $ordenLocal = 1;
 
-                $porCargo = $coleccionLocal->groupBy('expadm_iCodigo');
                 $pagesLocal = [];
-        foreach ($porCargo as $expId => $coleccionCargo) {
-                    $cargoNombre = optional($coleccionCargo->first())->cargo_nombre;
-                    $montoCargo = (float) optional($coleccionCargo->first())->monto;
-                    // Asegurar orden por nombres dentro de cada local (y cargo)
-                    $coleccionCargo = $coleccionCargo->sortBy('nombres')->values();
-                    $ordenCargo = 1; // por cargo (para tipos distintos a Tercero/CAS)
-            $chunks = $coleccionCargo->values()->chunk(13);
+                if ($isTerceroCas) {
+                    // TERCERO/CAS: agrupar por local (no por cargo), orden por nombres, numeración por local, sin página de resumen
+                    $coleccionOrdenada = $coleccionLocal->sortBy('nombres')->values();
+                    $chunks = $coleccionOrdenada->chunk(15); // ajuste: 15 registros por página
                     foreach ($chunks as $chunk) {
                         $page = [
                             'type' => 'detail',
                             'local_id' => $locId,
                             'local_nombre' => $localNombre,
-                            'cargo_id' => $expId,
-                            'cargo_nombre' => $cargoNombre,
-                            'monto_cargo' => $montoCargo,
+                            'cargo_id' => null,
+                            'cargo_nombre' => null,
+                            'monto_cargo' => 0,
                             'planilla_numero' => $numeroPlanillaLocal,
                             'page_no' => $paginaActual,
-                            'rows' => $chunk->map(function ($r) use (&$ordenCargo, &$ordenLocal, $isTerceroCas) {
+                            'rows' => $chunk->map(function ($r) use (&$ordenLocal) {
                                 return [
-                                    // Para Tercero/CAS, numeración por local; caso contrario, por cargo
-                                    'orden' => $isTerceroCas ? $ordenLocal++ : $ordenCargo++,
+                                    'orden' => $ordenLocal++,
+                                    'codigo' => $r->codigo,
+                                    'dni' => $r->dni,
+                                    'nombres' => $r->nombres,
+                                    'local_nombre' => $r->local_nombre,
+                                    'cargo_nombre' => $r->cargo_nombre,
+                                    'monto' => (float) $r->monto,
+                                    'cred_numero' => $r->cred_numero,
+                                ];
+                            })->toArray(),
+                        ];
+                        $pages[] = $page;
+                        $pagesLocal[] = $page;
+                        $paginaActual++;
+                    }
+                } else {
+                    // ADMINISTRATIVOS estándar: paginar por local (13 por página), orden alfabético global por nombres y numeración por local
+                    $coleccionOrdenada = $coleccionLocal->sortBy('nombres')->values();
+                    $chunks = $coleccionOrdenada->chunk(15); // ajuste: 15 registros por página
+                    foreach ($chunks as $chunk) {
+                        $page = [
+                            'type' => 'detail',
+                            'local_id' => $locId,
+                            'local_nombre' => $localNombre,
+                            'cargo_id' => null,
+                            'cargo_nombre' => null,
+                            'monto_cargo' => 0,
+                            'planilla_numero' => $numeroPlanillaLocal,
+                            'page_no' => $paginaActual,
+                            'rows' => $chunk->map(function ($r) use (&$ordenLocal) {
+                                return [
+                                    'orden' => $ordenLocal++,
                                     'codigo' => $r->codigo,
                                     'dni' => $r->dni,
                                     'nombres' => $r->nombres,
@@ -869,6 +948,24 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
                     })
                     ->values();
                     $granTotal = $resumen->sum('subtotal');
+                    // Marcar última página de detalle antes del resumen para mostrar Monto por local
+                    $lastLocalDetailIdx = null;
+                    for ($idx = count($pagesLocal) - 1; $idx >= 0; $idx--) {
+                        if (($pagesLocal[$idx]['type'] ?? '') === 'detail') { $lastLocalDetailIdx = $idx; break; }
+                    }
+                    if ($lastLocalDetailIdx !== null) {
+                        $pagesLocal[$lastLocalDetailIdx]['is_last_detail'] = true;
+                        $pagesLocal[$lastLocalDetailIdx]['total_local'] = $granTotal;
+                        // Reflejar también en $pages (coincidir por local y planilla)
+                        for ($j = count($pages) - 1; $j >= 0; $j--) {
+                            $pp = $pages[$j];
+                            if (($pp['type'] ?? '') === 'detail' && ($pp['local_id'] ?? null) === $locId && ($pp['planilla_numero'] ?? null) === $numeroPlanillaLocal) {
+                                $pages[$j]['is_last_detail'] = true;
+                                $pages[$j]['total_local'] = $granTotal;
+                                break;
+                            }
+                        }
+                    }
                     $summaryPage = [
                         'type' => 'summary',
                         'local_id' => $locId,
@@ -908,6 +1005,9 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
                 'pages' => $pages,
                 'total_pages' => $totalPages,
                 'es_tercero_cas' => $isTerceroCas,
+                'es_admin' => true,
+                'profec_vcFimaDirector' => $fecha?->profec_vcFimaDirector,
+                'profec_vcFimaJefe' => $fecha?->profec_vcFimaJefe,
             ];
 
             $tplDirA = public_path('storage/templates_planilla');
@@ -925,6 +1025,8 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
                     'fecha_proceso' => optional($fecha)->profec_dFecha,
                     'impresion_fecha' => now()->toDateTimeString(),
                     'titulo_planilla' => $tituloPlanilla,
+                    'profec_vcFimaDirector' => $fecha?->profec_vcFimaDirector,
+                    'profec_vcFimaJefe' => $fecha?->profec_vcFimaJefe,
                 ];
                 $generator = new \App\Services\PlanillaPdfGenerator();
                 $content = $generator->buildDocentesPdf($pages, $header, $tplDetalle, $tplResumen);
@@ -954,7 +1056,8 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
                         'pla_iNumero' => $item['numero'],
                         'pla_iPaginaInicio' => $item['pagina_inicio'],
                         'pla_IPaginaFin' => $item['pagina_fin'],
-                        'pla_iAdicional' => false,
+                        'pla_iLote' => $loteActual,
+                        'pla_iAdicional' => $esAdicional,
                         'pla_iVersion' => 1,
                         'pla_bActivo' => true,
                         'user_id' => $user?->id,
@@ -982,6 +1085,11 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
                 throw $tx;
             }
 
+            Notification::make()
+                ->title($esAdicional ? 'Planillas generadas (ADICIONAL)' : 'Planillas generadas')
+                ->success()
+                ->body('Se generó el PDF de planillas de administrativos correctamente.')
+                ->send();
             return response()->streamDownload(function () use ($content) {
                 echo $content;
             }, $downloadName, [
@@ -1015,7 +1123,14 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
             $proceso = Proceso::find($procesoId);
             $fecha = ProcesoFecha::find($fechaId);
             $tipo = Tipo::find($tipoId);
-            $tituloPlanilla = $tipo?->tipo_vcNombrePlanilla ?: 'PLANILLA DE ASIGNACIÓN DE PERSONAL ALUMNO, ASISTENCIA Y PAGO DE SUBVENCIÓN';
+            $loteActual = Planilla::where('pro_iCodigo', $procesoId)
+                ->where('profec_iCodigo', $fechaId)
+                ->where('tipo_iCodigo', $tipoId)
+                ->where('pla_bActivo', true)
+                ->count() + 1;
+            $esAdicional = $loteActual > 1;
+            $tituloPlanillaBase = $tipo?->tipo_vcNombrePlanilla ?: 'PLANILLA DE ASIGNACIÓN DE PERSONAL ALUMNO, ASISTENCIA Y PAGO DE SUBVENCIÓN';
+            $tituloPlanilla = $esAdicional ? ($tituloPlanillaBase . ' - ADICIONAL') : $tituloPlanillaBase;
 
             // Dataset de alumnos asignados
             $rows = ProcesoAlumno::query()
@@ -1071,40 +1186,36 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
                 $localNombre = optional($coleccionLocal->first())->local_nombre;
                 $ordenLocal = 1;
 
-                $porCargo = $coleccionLocal->groupBy('expadm_iCodigo');
                 $pagesLocal = [];
-                foreach ($porCargo as $expId => $coleccionCargo) {
-                    $cargoNombre = optional($coleccionCargo->first())->cargo_nombre;
-                    $montoCargo = (float) optional($coleccionCargo->first())->monto;
-                    $coleccionCargo = $coleccionCargo->sortBy('nombres')->values();
-                    $chunks = $coleccionCargo->values()->chunk(13);
-                    foreach ($chunks as $chunk) {
-                        $page = [
-                            'type' => 'detail',
-                            'local_id' => $locId,
-                            'local_nombre' => $localNombre,
-                            'cargo_id' => $expId,
-                            'cargo_nombre' => $cargoNombre,
-                            'monto_cargo' => $montoCargo,
-                            'planilla_numero' => $numeroPlanillaLocal,
-                            'page_no' => $paginaActual,
-                            'rows' => $chunk->map(function ($r) use (&$ordenLocal) {
-                                return [
-                                    'orden' => $ordenLocal++,
-                                    'codigo' => $r->codigo,
-                                    'dni' => $r->dni,
-                                    'nombres' => $r->nombres,
-                                    'local_nombre' => $r->local_nombre,
-                                    'cargo_nombre' => $r->cargo_nombre,
-                                    'monto' => (float) $r->monto,
-                                    'cred_numero' => $r->cred_numero,
-                                ];
-                            })->toArray(),
-                        ];
-                        $pages[] = $page;
-                        $pagesLocal[] = $page;
-                        $paginaActual++;
-                    }
+                // Agrupar por local: ordenar por nombres y paginar 13 por página
+                $coleccionOrdenada = $coleccionLocal->sortBy('nombres')->values();
+                $chunks = $coleccionOrdenada->chunk(15); // ajuste: 15 registros por página
+                foreach ($chunks as $chunk) {
+                    $page = [
+                        'type' => 'detail',
+                        'local_id' => $locId,
+                        'local_nombre' => $localNombre,
+                        'cargo_id' => null,
+                        'cargo_nombre' => null,
+                        'monto_cargo' => 0,
+                        'planilla_numero' => $numeroPlanillaLocal,
+                        'page_no' => $paginaActual,
+                        'rows' => $chunk->map(function ($r) use (&$ordenLocal) {
+                            return [
+                                'orden' => $ordenLocal++,
+                                'codigo' => $r->codigo,
+                                'dni' => $r->dni,
+                                'nombres' => $r->nombres,
+                                'local_nombre' => $r->local_nombre,
+                                'cargo_nombre' => $r->cargo_nombre,
+                                'monto' => (float) $r->monto,
+                                'cred_numero' => $r->cred_numero,
+                            ];
+                        })->toArray(),
+                    ];
+                    $pages[] = $page;
+                    $pagesLocal[] = $page;
+                    $paginaActual++;
                 }
 
                 // Sin página de resumen para alumnos (similar a Tercero/CAS)
@@ -1134,6 +1245,8 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
                 'pages' => $pages,
                 'total_pages' => $totalPages,
                 'es_alumno' => true,
+                'profec_vcFimaDirector' => $fecha?->profec_vcFimaDirector,
+                'profec_vcFimaJefe' => $fecha?->profec_vcFimaJefe,
             ];
 
             // Forzar DOMPDF para columnas condicionales: generar contenido primero
@@ -1155,7 +1268,8 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
                         'pla_iNumero' => $item['numero'],
                         'pla_iPaginaInicio' => $item['pagina_inicio'],
                         'pla_IPaginaFin' => $item['pagina_fin'],
-                        'pla_iAdicional' => false,
+                        'pla_iLote' => $loteActual,
+                        'pla_iAdicional' => $esAdicional,
                         'pla_iVersion' => 1,
                         'pla_bActivo' => true,
                         'user_id' => $user?->id,
@@ -1183,6 +1297,11 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
                 throw $tx;
             }
 
+            Notification::make()
+                ->title($esAdicional ? 'Planillas generadas (ADICIONAL)' : 'Planillas generadas')
+                ->success()
+                ->body('Se generó el PDF de planillas de alumnos correctamente.')
+                ->send();
             return response()->streamDownload(function () use ($content) { echo $content; }, $downloadName, [
                 'Content-Type' => 'application/pdf',
                 'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',

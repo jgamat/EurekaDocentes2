@@ -108,9 +108,13 @@ class ConsultarCargos extends Page implements HasForms, HasTable
         if($ids->isEmpty()){
             return ExperienciaAdmision::query()->whereRaw('1=0');
         }
+        // Ordenamos por el nombre del cargo (tabla maestro) para consistencia en UI y export.
         return ExperienciaAdmision::query()
             ->with('maestro')
-            ->whereIn('expadm_iCodigo',$ids->values());
+            ->whereIn('expadm_iCodigo',$ids->values())
+            ->join('experienciaadmisionMaestro as eam','experienciaadmision.expadmma_iCodigo','=','eam.expadmma_iCodigo')
+            ->orderBy('eam.expadmma_vcNombre','asc')
+            ->select('experienciaadmision.*');
     }
 
     public function table(Table $table): Table
@@ -158,7 +162,12 @@ class ConsultarCargos extends Page implements HasForms, HasTable
             Notification::make()->title('No hay cargos para exportar')->warning()->send();
             return null;
         }
-    $cargos = ExperienciaAdmision::with('maestro')->whereIn('expadm_iCodigo',$ids)->get();
+    $cargos = ExperienciaAdmision::with('maestro')
+        ->whereIn('expadm_iCodigo',$ids)
+        ->join('experienciaadmisionMaestro as eam','experienciaadmision.expadmma_iCodigo','=','eam.expadmma_iCodigo')
+        ->orderBy('eam.expadmma_vcNombre','asc')
+        ->select('experienciaadmision.*')
+        ->get();
     $fechaSeleccionada = optional(ProcesoFecha::find($this->filters['proceso_fecha_id']))->profec_dFecha;
     $rows = $cargos->values()->map(function($c,$i) use ($fechaSeleccionada){
             return [

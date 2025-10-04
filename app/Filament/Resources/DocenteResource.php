@@ -28,7 +28,83 @@ class DocenteResource extends Resource
     {
         return $form
             ->schema([
-                //
+                Forms\Components\Grid::make(2)->schema([
+                    Forms\Components\TextInput::make('doc_vcDni')
+                        ->label('DNI')
+                        ->required()
+                        ->minLength(8)
+                        ->maxLength(9)
+                        ->numeric()
+                        ->unique(table: 'docente', column: 'doc_vcDni', ignoreRecord: true)
+                        ->validationAttribute('DNI')
+                        ->helperText('Debe ser único (8 a 9 dígitos)')
+                        ->validationMessages([
+                            'unique' => 'El DNI ya está registrado.',
+                            'min_length' => 'El DNI debe tener al menos 8 dígitos.',
+                            'max_length' => 'El DNI no debe exceder 9 dígitos.',
+                            'numeric' => 'El DNI solo debe contener números.',
+                        ])
+                        ->disabled(fn($record)=> $record !== null),
+                    Forms\Components\TextInput::make('doc_vcCodigo')
+                        ->label('Código')
+                        ->required()
+                        ->minLength(6)
+                        ->maxLength(7)
+                        ->unique(table: 'docente', column: 'doc_vcCodigo', ignoreRecord: true)
+                        ->validationAttribute('Código')
+                        ->helperText('6 a 7 caracteres (único)')
+                        ->validationMessages([
+                            'unique' => 'El Código ya está registrado.',
+                            'min_length' => 'El Código debe tener al menos 6 caracteres.',
+                            'max_length' => 'El Código no debe exceder 7 caracteres.',
+                        ]),
+                    Forms\Components\TextInput::make('doc_vcPaterno')
+                        ->label('Apellido Paterno')
+                        ->required()
+                        ->maxLength(60),
+                    Forms\Components\TextInput::make('doc_vcMaterno')
+                        ->label('Apellido Materno')
+                        ->required()
+                        ->maxLength(60),
+                    Forms\Components\TextInput::make('doc_vcNombre')
+                        ->label('Nombres')
+                        ->required()
+                        ->maxLength(120),
+                    Forms\Components\Select::make('dep_iCodigo')
+                        ->label('Dependencia')
+                        ->options(fn()=> \App\Models\Dependencia::orderBy('dep_vcNombre')->pluck('dep_vcNombre','dep_iCodigo'))
+                        ->searchable(),
+                    Forms\Components\Select::make('cat_iCodigo')
+                        ->label('Categoría')
+                        ->options(fn()=> \App\Models\Categoria::orderBy('cat_vcNombre')->pluck('cat_vcNombre','cat_iCodigo'))
+                        ->searchable(),
+                    Forms\Components\Select::make('con_iCodigo')
+                        ->label('Condición')
+                        ->options(fn()=> \App\Models\Condicion::orderBy('con_vcNombre')->pluck('con_vcNombre','con_iCodigo'))
+                        ->searchable(),
+                    Forms\Components\Select::make('est_iCodigo')
+                        ->label('Estado')
+                        ->options(fn()=> \App\Models\Estado::orderBy('est_vcNombre')->pluck('est_vcNombre','est_iCodigo'))
+                        ->searchable(),
+                    Forms\Components\Select::make('tipo_iCodigo')
+                        ->label('Tipo')
+                        ->options(fn()=> \App\Models\Tipo::orderBy('tipo_vcNombre')->pluck('tipo_vcNombre','tipo_iCodigo'))
+                        ->searchable(),
+                    Forms\Components\DatePicker::make('doc_dNacimiento')
+                        ->label('Fecha Nacimiento')
+                        ->native(false),
+                    Forms\Components\TextInput::make('doc_vcCelular')
+                        ->label('Celular')
+                        ->maxLength(20),
+                    Forms\Components\TextInput::make('doc_vcEmail')
+                        ->label('Email Personal')
+                        ->email()
+                        ->maxLength(120),
+                    Forms\Components\TextInput::make('doc_vcEmailUNMSM')
+                        ->label('Email UNMSM')
+                        ->email()
+                        ->maxLength(120),
+                ])
             ]);
     }
 

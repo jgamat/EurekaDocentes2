@@ -102,8 +102,22 @@ class DesasignarDocente extends Page implements HasForms
                     })
                     ->required(fn (callable $get) => filled($get('proceso_fecha_id')))
                     ->reactive()
-                    ->afterStateUpdated(function ($state, callable $set, $livewire) {
+                    ->afterStateUpdated(function ($state, callable $set, $livewire, callable $get) {
                         $livewire->resetValidation();
+                        $fechaId = $get('proceso_fecha_id');
+                        if ($fechaId && $state) {
+                            $asignacion = ProcesoDocente::where('doc_vcCodigo', $state)
+                                ->where('profec_iCodigo', $fechaId)
+                                ->where('prodoc_iAsignacion', true)
+                                ->first();
+                            if (!$asignacion) {
+                                Notification::make()
+                                    ->title('No asignado')
+                                    ->body('El docente no está asignado en esta fecha.')
+                                    ->danger()
+                                    ->send();
+                            }
+                        }
                     }),
             ])
             ->statePath('data');
@@ -119,9 +133,14 @@ class DesasignarDocente extends Page implements HasForms
            
             return;
         }
-        if ($asignacion->user_id !== auth()->id()) {
-            Notification::make()->title('No autorizado')->body('Solo el usuario que asignó puede desasignar.')->danger()->send();
-           
+        $user = auth()->user();
+        $esPlanilla = $user && method_exists($user, 'hasRole') ? $user->hasRole('Planilla') : false;
+        if ($asignacion->user_id !== auth()->id() && !$esPlanilla) {
+            Notification::make()
+                ->title('No autorizado')
+                ->body('Solo el usuario que asignó o un usuario con rol Planilla puede desasignar.')
+                ->danger()
+                ->send();
             return;
         }
     // Guardar IDs previos para refrescar tarjetas luego
@@ -132,6 +151,7 @@ class DesasignarDocente extends Page implements HasForms
         $localCargo = LocalCargo::where('loc_iCodigo', $asignacion->loc_iCodigo ?? 0)
             ->where('expadm_iCodigo', $asignacion->expadm_iCodigo ?? 0)
             ->first();
+       
 
         $asignacion->update([
             'prodoc_iAsignacion' => false,
@@ -139,6 +159,10 @@ class DesasignarDocente extends Page implements HasForms
             'loc_iCodigo' => null,
             'expadm_iCodigo' => null,
             'prodoc_dtFechaAsignacion' => null,
+            'prodoc_dtFechaImpresion' => null,           
+            'prodoc_iCredencial' => false,
+            'user_idDesasignador' => auth()->id(),
+           
         ]);
 
         

@@ -47,6 +47,42 @@ class PlanillaPdfGenerator
             // Línea 1: izquierda UNMSM, derecha (misma línea) Página | Fecha | Fecha de impresión
             $pdf->SetFont('Arial', 'B', 11);
             $pdf->SetXY(10, 8);
+
+                // Reubicación: colocar Jefe de Unidad y Observaciones cerca del footer
+                $sectionBottomBase = 195; // footer base Y
+                $blockHeight = 42; // altura aproximada Jefe + Observaciones
+                $startY = $sectionBottomBase - $blockHeight - 12; // margen de separación respecto a firmas
+                if ($startY < $y + 12) { $startY = $y + 12; }
+
+                $pdf->SetFont('Arial', 'B', 9);
+                // Título con borde (colspan)
+                $pdf->SetXY(10, $startY);
+                $pdf->Cell(277, 7, utf8_decode('Jefe de Unidad'), 1, 1, 'L');
+                $wTotal = 277; $wNom = 0.55 * $wTotal; $wFirma = 0.20 * $wTotal; $wFecha = $wTotal - $wNom - $wFirma;
+                $pdf->SetXY(10, $startY + 7);
+                $pdf->Cell($wNom, 6, utf8_decode('Apellidos y Nombres'), 1, 0, 'L');
+                $pdf->Cell($wFirma, 6, 'Firma', 1, 0, 'L');
+                $pdf->Cell($wFecha, 6, utf8_decode('Fecha y Hora'), 1, 1, 'L');
+                $pdf->SetXY(10, $startY + 13);
+                $rowJefeH = 12;
+                $pdf->Cell($wNom, $rowJefeH, '', 1, 0, 'L');
+                $pdf->Cell($wFirma, $rowJefeH, '', 1, 0, 'L');
+                $pdf->Cell($wFecha, $rowJefeH, '', 1, 1, 'L');
+                // Línea interna firma y fecha
+                $pdf->SetDrawColor(0,0,0);
+                $lineYInner = $startY + 13 + $rowJefeH - 4;
+                $pdf->Line(10 + $wNom + 2, $lineYInner, 10 + $wNom + $wFirma - 2, $lineYInner);
+                $pdf->Line(10 + $wNom + $wFirma + 2, $lineYInner, 10 + $wNom + $wFirma + $wFecha - 2, $lineYInner);
+
+                // Observaciones
+                $obsTitleY = $startY + 13 + $rowJefeH + 4;
+                $pdf->SetXY(10, $obsTitleY);
+                $pdf->SetFont('Arial', 'B', 9);
+                $pdf->Cell(100, 5, utf8_decode('Observaciones:'), 0, 1, 'L');
+                $line1Y = $obsTitleY + 7;
+                $line2Y = $line1Y + 8;
+                $pdf->Line(10, $line1Y, 10 + 277, $line1Y);
+                $pdf->Line(10, $line2Y, 10 + 277, $line2Y);
             $pdf->Cell(120, 6, utf8_decode('UNIVERSIDAD NACIONAL MAYOR DE SAN MARCOS'), 0, 0, 'L');
             $pdf->SetFont('Arial', '', 9);
             $rightW = 150; $rightX = 297 - 10 - $rightW; // margen derecho
@@ -94,16 +130,16 @@ class PlanillaPdfGenerator
                 $sub = utf8_decode('Local: ').$p['local_nombre'].'   |   '.utf8_decode('Cargo: ').$p['cargo_nombre'].'   |   '.utf8_decode('Monto: ').number_format((float)$p['monto_cargo'],2);
                 $pdf->Cell(277, 6, $sub, 0, 0, 'L');
 
-                // Tabla (15 filas aprox) con columnas: Codigo, Documento, # Credencial, Local, Cargo, Monto, Nombres, Firma
-                    $y = 40; $rowH = 10;
-                // Definir anchos (suma 277)
-                $wCodigo = 25; $wDoc = 28; $wCred = 28; $wLocal = 45; $wCargo = 45; $wMonto = 20; $wNombres = 66; $wFirma = 20;
+                // Tabla ajustada a 15 filas visibles: reducimos altura de fila a 9 y adelantamos y inicial
+                    $y = 38; $rowH = 9;
+                // Definir anchos (suma 277) - redistribución del espacio del # Credencial
+                // Ajuste: ampliamos columna Firma (20->30) reduciendo Nombres (82->72) mantiene 277mm total
+                $wCodigo = 25; $wDoc = 30; $wLocal = 50; $wCargo = 50; $wMonto = 20; $wNombres = 72; $wFirma = 30; // 25+30+50+50+20+72+30 = 277
                 // Cabecera tabla
                 $pdf->SetFont('Arial', 'B', 9);
                 $pdf->SetXY(10, $y);
                     $pdf->Cell($wCodigo, $rowH, 'Codigo', 1, 0, 'C');
                     $pdf->Cell($wDoc, $rowH, 'Documento', 1, 0, 'C');
-                    $pdf->Cell($wCred, $rowH, utf8_decode('# Credencial'), 1, 0, 'C');
                     $pdf->Cell($wLocal, $rowH, 'Local', 1, 0, 'C');
                     $pdf->Cell($wCargo, $rowH, 'Cargo', 1, 0, 'C');
                     $pdf->Cell($wMonto, $rowH, 'Monto', 1, 0, 'C');
@@ -116,19 +152,32 @@ class PlanillaPdfGenerator
                     $pdf->SetXY(10, $y);
                     $pdf->Cell($wCodigo, $rowH, (string)$r['codigo'], 1, 0, 'L');
                     $pdf->Cell($wDoc, $rowH, (string)$r['dni'], 1, 0, 'L');
-                    $pdf->Cell($wCred, $rowH, (string)$r['cred_numero'], 1, 0, 'L');
                     $pdf->Cell($wLocal, $rowH, utf8_decode((string)$r['local_nombre']), 1, 0, 'L');
                     $pdf->Cell($wCargo, $rowH, utf8_decode((string)$r['cargo_nombre']), 1, 0, 'L');
                     $pdf->Cell($wMonto, $rowH, number_format((float)$r['monto'],2), 1, 0, 'R');
                     $pdf->Cell($wNombres, $rowH, utf8_decode((string)$r['nombres']), 1, 0, 'L');
+                    // Firma: celda vacía con línea horizontal inferior interior
                     $pdf->Cell($wFirma, $rowH, '', 1, 1, 'L');
+                    // Dibujar línea interna (ligeramente arriba del borde inferior para que sea visible si se firma)
+                    $lineY = $y + $rowH - 3; // 3mm sobre borde inferior
+                    $pdf->SetDrawColor(0,0,0);
+                    $pdf->Line(10 + $wCodigo + $wDoc + $wLocal + $wCargo + $wMonto + $wNombres, $lineY, 10 + $wCodigo + $wDoc + $wLocal + $wCargo + $wMonto + $wNombres + $wFirma - 1, $lineY);
                     $y += $rowH;
+                }
+
+                // Línea de Monto por local en la última página de detalle del local
+                if (!empty($p['is_last_detail']) && isset($p['total_local'])) {
+                    $pdf->SetFont('Arial', 'B', 10);
+                    // Asegurar que no se sobreponga con firmas: si queda poco espacio subimos la línea
+                    if ($y > 180) { $y = 180; }
+                    $pdf->SetXY(10, $y + 2);
+                    $pdf->Cell(277, 6, utf8_decode('Monto por local: ').number_format((float)$p['total_local'], 2), 0, 1, 'R');
                 }
 
                 // Pie con firmas
                 // Footer con firmas y cargos
-                // Firmas al pie de página (Y=200mm)
-                $y = 200;
+                // Firmas al pie de página (subimos ligeramente para acomodar más filas)
+                $y = 195;
                 $pdf->SetXY(30, $y);
                 $pdf->Cell(100, 0, '________________________________________', 0, 0, 'C');
                 $pdf->Cell(120, 0, '________________________________________', 0, 1, 'C');
@@ -167,9 +216,40 @@ class PlanillaPdfGenerator
                 $pdf->Cell(210, $rowH, 'Total por local', 1, 0, 'R');
                 $pdf->Cell(40, $rowH, number_format((float)$p['gran_total'],2), 1, 1, 'R');
 
+                // Bloques Jefe de Unidad y Observaciones (reubicados y elevados)
+                $sectionBottomBase = 195; // posición base de footer
+                $blockHeight = 58; // ajustado por mayor altura fila vacía
+                $startY = $sectionBottomBase - $blockHeight - 24; // separación incrementada a 24mm respecto a footer (antes 20mm)
+                if ($startY < $y + 8) { $startY = $y + 8; }
+                $pdf->SetFont('Arial', 'B', 9);
+                $pdf->SetXY(10, $startY);
+                $pdf->Cell(277, 8, utf8_decode('Jefe de Unidad'), 1, 1, 'L');
+                $wTotal = 277; $wNom = 0.55 * $wTotal; $wFirma = 0.20 * $wTotal; $wFecha = $wTotal - $wNom - $wFirma;
+                $pdf->SetXY(10, $startY + 8);
+                $pdf->Cell($wNom, 7, utf8_decode('Apellidos y Nombres'), 1, 0, 'L');
+                $pdf->Cell($wFirma, 7, 'Firma', 1, 0, 'L');
+                $pdf->Cell($wFecha, 7, utf8_decode('Fecha y Hora'), 1, 1, 'L');
+                $rowJefeH = 22; // altura incrementada
+                $pdf->SetXY(10, $startY + 15);
+                $pdf->Cell($wNom, $rowJefeH, '', 1, 0, 'L');
+                $pdf->Cell($wFirma, $rowJefeH, '', 1, 0, 'L');
+                $pdf->Cell($wFecha, $rowJefeH, '', 1, 1, 'L');
+                // Líneas internas firma/fecha
+                $pdf->SetDrawColor(0,0,0);
+                $lineYInner = $startY + 15 + $rowJefeH - 6; // ajuste línea proporcional
+                $pdf->Line(10 + $wNom + 4, $lineYInner, 10 + $wNom + $wFirma - 4, $lineYInner);
+                $pdf->Line(10 + $wNom + $wFirma + 4, $lineYInner, 10 + $wNom + $wFirma + $wFecha - 4, $lineYInner);
+                // Observaciones elevadas
+                $obsTitleY = $startY + 15 + $rowJefeH + 6;
+                $pdf->SetXY(10, $obsTitleY);
+                $pdf->Cell(100, 6, utf8_decode('Observaciones:'), 0, 1, 'L');
+                $line1Y = $obsTitleY + 9;
+                $line2Y = $line1Y + 9;
+                $pdf->Line(10, $line1Y, 10 + 277, $line1Y);
+                $pdf->Line(10, $line2Y, 10 + 277, $line2Y);
+
                 // Footer con firmas y cargos (resumen)
-                // Firmas al pie de página (Y=200mm)
-                $y = 200;
+                $y = 195;
                 $pdf->SetXY(30, $y);
                 $pdf->Cell(100, 0, '________________________________________', 0, 0, 'C');
                 $pdf->Cell(120, 0, '________________________________________', 0, 1, 'C');

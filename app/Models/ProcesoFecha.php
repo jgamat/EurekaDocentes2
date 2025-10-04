@@ -20,6 +20,8 @@ class ProcesoFecha extends Model
         'profec_iActivo',
         'profec_vcUrlAnverso',
         'profec_vcUrlReverso',
+        'profec_vcFimaDirector',
+        'profec_vcFimaJefe',
     ];
 
     public function proceso(): BelongsTo

@@ -9,7 +9,27 @@ class ProcesoDocente extends Model
 {
     protected $table = 'procesodocente';
     protected $primaryKey = 'prodoc_id';
-    public $incrementing = true;
+    public $incrementing = true; 
+
+    protected $fillable = [
+                
+         'doc_vcCodigo',
+        'profec_iCodigo',
+        'loc_iCodigo',       
+        'expadm_iCodigo',
+        'prodoc_dtFechaAsignacion',
+        'user_id',
+        'prodoc_iCodigo',        
+        'prodoc_iCredencial',
+        'prodoc_dtFechaImpresion',
+        'prodoc_iAsignacion',
+        'prodoc_dtFechaDesasignacion',
+         'user_idImpresion',
+         'prodoc_vcIpImpresion',
+         'prodoc_vcIpAsignacion',
+         'user_idDesasignador',
+       
+    ];
 
     // Una asignación pertenece a un Local
     public function local(): BelongsTo

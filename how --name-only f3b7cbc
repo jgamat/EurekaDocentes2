@@ -1,0 +1,157 @@
+[33mcommit d7da1aba6b12d26d98f143d7463b5f8c71aa97fa[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m
+Author: jgamat <jtellog@unmsm.edu.pe>
+Date:   Fri Oct 3 22:23:45 2025 -0500
+
+    Revert "Tfuncionalidades de planilla"
+    
+    This reverts commit 48bc90d3d7a2adad7f77464b65e168f446205974.
+
+[1mdiff --git a/resources/views/filament/pages/importar-asignacion-administrativos.blade.php b/resources/views/filament/pages/importar-asignacion-administrativos.blade.php[m
+[1mdeleted file mode 100644[m
+[1mindex 4259384..0000000[m
+[1m--- a/resources/views/filament/pages/importar-asignacion-administrativos.blade.php[m
+[1m+++ /dev/null[m
+[36m@@ -1,143 +0,0 @@[m
+[31m-@php /** @var \App\Filament\Pages\ImportarAsignacionAdministrativos $this */ @endphp[m
+[31m-<x-filament::page>[m
+[31m-	<div class="space-y-6">[m
+[31m-		<form wire:submit.prevent="parseFile" class="p-4 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">[m
+[31m-			{{ $this->form }}[m
+[31m-			<div class="mt-4 flex gap-3">[m
+[31m-				<x-filament::button type="submit" color="primary">Procesar / Validar</x-filament::button>[m
+[31m-				@if(!empty($preview))[m
+[31m-					<x-filament::button wire:click="import" color="success">Confirmar Importación</x-filament::button>[m
+[31m-					<x-filament::button wire:click="downloadErrores" color="warning" :disabled="collect($preview)->every(fn($r)=>$r['valid'])">Descargar Errores</x-filament::button>[m
+[31m-					<x-filament::button wire:click="downloadErroresXlsx" color="warning" :disabled="collect($preview)->every(fn($r)=>$r['valid'])">Errores XLSX</x-filament::button>[m
+[31m-				@endif[m
+[31m-				<x-filament::button wire:click="downloadPlantilla" color="gray" type="button">Descargar Plantilla</x-filament::button>[m
+[31m-			</div>[m
+[31m-		</form>[m
+[31m-[m
+[31m-		@if(!empty($preview))[m
+[31m-			@php[m
+[31m-				$total = count($preview);[m
+[31m-				$errores = collect($preview)->reject(fn($r)=>$r['valid'])->count();[m
+[31m-				$validas = $total - $errores;[m
+[31m-			@endphp[m
+[31m-			<div x-data="importAsignacionAdministrativos(@js($preview))" class="space-y-4">[m
+[31m-				<div class="flex gap-4 text-sm">[m
+[31m-					<span class="px-2 py-1 bg-green-100 text-green-800 rounded">Válidas: {{ $validas }}</span>[m
+[31m-					<span class="px-2 py-1 bg-red-100 text-red-800 rounded">Con errores: {{ $errores }}</span>[m
+[31m-					<span class="px-2 py-1 bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 rounded">Total: {{ $total }}</span>[m
+[31m-				</div>[m
+[31m-				<div class="flex flex-wrap items-end gap-4 text-sm mt-3 mb-2">[m
+[31m-					<div>[m
+[31m-						<label class="block text-xs font-medium mb-1">Buscar</label>[m
+[31m-						<input x-model.debounce.300ms="q" type="text" class="border rounded px-2 py-1 text-xs bg-white dark:bg-gray-900" placeholder="Código / DNI / Nombre / Cargo / Local">[m
+[31m-					</div>[m
+[31m-					<label class="inline-flex items-center gap-2 text-xs">[m
+[31m-						<input type="checkbox" x-model="onlyErrors"> <span>Solo errores</span>[m
+[31m-					</label>[m
+[31m-					<label class="inline-flex items-center gap-2 text-xs">[m
+[31m-						<input type="checkbox" x-model="onlyWarnings"> <span>Solo warnings</span>[m
+[31m-					</label>[m
+[31m-					<div class="flex items-center gap-2 text-xs">[m
+[31m-						<label>Por página</label>[m
+[31m-						<select x-model.number="perPage" class="border rounded px-1 py-0.5 bg-white dark:bg-gray-900 text-xs">[m
+[31m-							<option value="10">10</option>[m
+[31m-							<option value="25">25</option>[m
+[31m-							<option value="50">50</option>[m
+[31m-							<option value="100">100</option>[m
+[31m-						</select>[m
+[31m-					</div>[m
+[31m-					<span class="text-[10px] text-gray-500" x-text="'Filtradas: '+filtered().length+' | Página '+page+'/'+totalPages()"></span>[m
+[31m-				</div>[m
+[31m-				<div class="overflow-auto border rounded">[m
+[31m-					<table class="min-w-full text-xs">[m
+[31m-						<thead class="bg-gray-50 dark:bg-gray-700">[m
+[31m-						<tr class="text-left">[m
+[31m-							<th class="px-2 py-1">Fila</th>[m
+[31m-							<th class="px-2 py-1">Código</th>[m
+[31m-							<th class="px-2 py-1">DNI</th>[m
+[31m-							<th class="px-2 py-1">Nombres</th>[m
+[31m-							<th class="px-2 py-1">Cargo</th>[m
+[31m-							<th class="px-2 py-1">Local</th>[m
+[31m-							<th class="px-2 py-1">Fecha</th>[m
+[31m-							<th class="px-2 py-1 w-64">Errores</th>[m
+[31m-							<th class="px-2 py-1 w-64">Warnings</th>[m
+[31m-							<th class="px-2 py-1">Estado</th>[m
+[31m-						</tr>[m
+[31m-						</thead>[m
+[31m-						<tbody>[m
+[31m-							<template x-for="r in paged()" :key="r.row">[m
+[31m-							<tr :class="{'bg-red-50 dark:bg-red-900/30': !r.valid, 'bg-amber-50 dark:bg-amber-900/30': r.valid && r.warnings && r.warnings.length}" class="border-t border-gray-200 dark:border-gray-600">[m
+[31m-								<td class="px-2 py-1" x-text="r.row"></td>[m
+[31m-								<td class="px-2 py-1 font-mono" x-text="r.codigo"></td>[m
+[31m-								<td class="px-2 py-1 font-mono" x-text="r.dni"></td>[m
+[31m-								<td class="px-2 py-1" x-text="r.nombres"></td>[m
+[31m-								<td class="px-2 py-1" x-text="r.cargo"></td>[m
+[31m-								<td class="px-2 py-1" x-text="r.local"></td>[m
+[31m-								<td class="px-2 py-1" x-text="r.fecha"></td>[m
+[31m-								<td class="px-2 py-1 text-[11px] whitespace-pre-wrap" x-text="!r.valid && r.errores ? r.errores.join(' | ') : ''"></td>[m
+[31m-								<td class="px-2 py-1 text-[11px] whitespace-pre-wrap" x-text="r.valid && r.warnings ? r.warnings.join(' | ') : ''"></td>[m
+[31m-								<td class="px-2 py-1">[m
+[31m-									<span x-show="r.valid" class="px-2 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-800 dark:text-green-200">OK</span>[m
+[31m-									<span x-show="!r.valid" class="px-2 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-800 dark:text-red-200">Error</span>[m
+[31m-								</td>[m
+[31m-							</tr>[m
+[31m-							</template>[m
+[31m-							<tr x-show="filtered().length===0">[m
+[31m-								<td colspan="10" class="px-2 py-4 text-center text-sm text-gray-500">Sin resultados (ajuste filtros o búsqueda)</td>[m
+[31m-							</tr>[m
+[31m-						</tbody>[m
+[31m-					</table>[m
+[31m-				</div>[m
+[31m-				<div class="flex items-center justify-between gap-4 text-xs mt-2" x-show="filtered().length>0">[m
+[31m-					<div class="flex items-center gap-1">[m
+[31m-						<button type="button" class="px-2 py-1 border rounded" :disabled="page===1" @click="page=1">«</button>[m
+[31m-						<button type="button" class="px-2 py-1 border rounded" :disabled="page===1" @click="prev()">‹</button>[m
+[31m-						<span class="px-2">Página <span x-text="page"></span>/<span x-text="totalPages()"></span></span>[m
+[31m-						<button type="button" class="px-2 py-1 border rounded" :disabled="page===totalPages()" @click="next()">›</button>[m
+[31m-						<button type="button" class="px-2 py-1 border rounded" :disabled="page===totalPages()" @click="page=totalPages()">»</button>[m
+[31m-					</div>[m
+[31m-					<div class="text-[10px] text-gray-500" x-text="'Mostrando '+(((page-1)*perPage)+1)+'-'+Math.min(page*perPage, filtered().length)+' de '+filtered().length"></div>[m
+[31m-				</div>[m
+[31m-			</div>[m
+[31m-		@endif[m
+[31m-[m
+[31m-		<script>[m
+[31m-			function importAsignacionAdministrativos(rows){[m
+[31m-				return {[m
+[31m-					q:'',[m
+[31m-					onlyErrors:false,[m
+[31m-					onlyWarnings:false,[m
+[31m-					rows: rows || [],[m
+[31m-					page:1,[m
+[31m-					perPage:25,[m
+[31m-					filtered(){[m
+[31m-						let data = this.rows;[m
+[31m-						const qUp = this.q.trim().toUpperCase();[m
+[31m-						if(qUp){[m
+[31m-							data = data.filter(r => [r.codigo, r.dni, r.nombres, r.cargo, r.local].some(v => (v||'').toString().toUpperCase().includes(qUp)));[m
+[31m-						}[m
+[31m-						if(this.onlyErrors){[m
+[31m-							data = data.filter(r => r.errores && r.errores.length > 0);[m
+[31m-						}[m
+[31m-						if(this.onlyWarnings){[m
+[31m-							data = data.filter(r => (!r.errores || r.errores.length === 0) && r.warnings && r.warnings.length > 0);[m
+[31m-						}[m
+[31m-						const totalP = Math.max(1, Math.ceil(data.length / this.perPage));[m
+[31m-						if(this.page > totalP) this.page = totalP;[m
+[31m-						return data;[m
+[31m-					},[m
+[31m-					paged(){[m
+[31m-						const start = (this.page - 1) * this.perPage;[m
+[31m-						return this.filtered().slice(start, start + this.perPage);[m
+[31m-					},[m
+[31m-					totalPages(){[m
+[31m-						return Math.max(1, Math.ceil(this.filtered().length / this.perPage));[m
+[31m-					},[m
+[31m-					next(){ if(this.page < this.totalPages()) this.page++; },[m
+[31m-					prev(){ if(this.page > 1) this.page--; }[m
+[31m-				}[m
+[31m-			}[m
+[31m-		</script>[m
+[31m-[m
+[31m-	</div>[m
+[31m-</x-filament::page>[m

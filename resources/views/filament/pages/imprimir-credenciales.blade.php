@@ -12,15 +12,32 @@
     .impr-cred-page .fi-header { margin-left: 48px !important; }
     </style>
 
+    @php 
+        $__fallbackBase = asset('storage/credenciales/fallbacks'); 
+        $__imprJsPath = public_path('js/impr-cred.js');
+        $__imprJsV = file_exists($__imprJsPath) ? filemtime($__imprJsPath) : time();
+    @endphp
+    <script>
+        window.__uid = {{ (int) auth()->id() ?: 'null' }};
+        window.__fallbackBase = @json($__fallbackBase);
+    </script>
+    <script src="{{ asset('js/impr-cred.js') }}?v={{ $__imprJsV }}" defer></script>
+
     <!-- Wrapper para desplazar el contenido a la derecha (solo en esta página) -->
     <div id="impr-cred-root" class="w-full" style="margin-left: 48px;"
-        x-data
-        x-on:open-pdf.window="if($event.detail?.url){ window.open($event.detail.url, '_blank'); }"
+        x-data="imprCredData(@entangle('pendingPdfUrl'))"
+        x-init="(() => { $watch('pendingPdfUrl', (val) => { if (val) { openPdf(val); } }); if (pendingPdfUrl) { openPdf(pendingPdfUrl); } })()"
+        x-on:open-pdf.window="openPdf($event.detail?.url)"
+        x-on:open-placeholder.window="openPlaceholder()"
+        x-on:pdf-error.window="if(pdfWin && !pdfWin.closed){ pdfWin.close(); pdfWin=null; } blocked=true; isGenerating=false;"
+        x-on:close-placeholder.window="if(pdfWin && !pdfWin.closed){ pdfWin.close(); pdfWin=null; } isGenerating=false;"
     >
 
     <!-- Barra de acciones superior -->
-    <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between relative z-0">
-        <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Impresión de Credenciales</h2>
+    <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between relative z-0">
+        <div class="flex items-center gap-3 flex-wrap">
+            <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Impresión de Credenciales</h2>
+        </div>
         <div class="flex flex-wrap items-center gap-2">
             <button type="button" wire:click="clearPlantillaCache" wire:loading.attr="disabled" class="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-xs font-medium px-3 py-1.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 disabled:opacity-50">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M4 4a2 2 0 012-2h2.586A2 2 0 0110 2.586L11.414 4H14a2 2 0 012 2v1H4V4z"/><path fill-rule="evenodd" d="M4 9v5a2 2 0 002 2h8a2 2 0 002-2V9H4zm3 2h6a1 1 0 010 2H7a1 1 0 010-2z" clip-rule="evenodd"/></svg>
@@ -32,6 +49,24 @@
             </button>
         </div>
     </div>
+
+    <!-- Fallback si el popup fue bloqueado: muestra un enlace manual al PDF -->
+    <template x-if="blocked && pdfUrl">
+        <div class="mb-3 rounded-md border px-3 py-2 text-[13px] bg-amber-50 text-amber-900 border-amber-300 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-600" role="alert">
+            El navegador bloqueó la apertura automática del PDF. 
+            <a :href="pdfUrl" target="_blank" class="font-semibold underline text-indigo-700 hover:text-indigo-800 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-indigo-500 dark:text-indigo-300 dark:hover:text-indigo-200 dark:focus:ring-indigo-400">Abrir PDF manualmente</a>.
+        </div>
+    </template>
+    <template x-if="blocked && !pdfUrl">
+        <div class="mb-3 rounded-md border px-3 py-2 text-[13px] bg-red-50 text-red-900 border-red-300 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-600" role="alert">
+            Ocurrió un error al generar el PDF. Intente nuevamente o revise las plantillas.
+        </div>
+    </template>
+    <template x-if="isGenerating && !blocked && !pdfUrl">
+        <div class="mb-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-[13px] text-blue-800 dark:bg-blue-900/20 dark:text-blue-200 dark:border-blue-700">
+            Generando PDF... La pestaña se abrirá automáticamente cuando esté listo.
+        </div>
+    </template>
 
     {{-- Panel de Filtros --}}
     <div class="p-4 mb-4 bg-white rounded-xl shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-800 dark:ring-white/10 relative z-0">

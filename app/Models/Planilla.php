@@ -44,6 +44,7 @@ class Planilla extends Model
         'pla_vcMotivoCambio',
         'user_id',
         'pla_vcIp',
+        'pla_iLote',
     ];
 
     /**
@@ -54,6 +55,7 @@ class Planilla extends Model
     protected $casts = [
         'pla_bActivo' => 'boolean', // Convierte el TINYINT(1) a true/false
         'pla_iAdicional' => 'boolean',
+        'pla_iLote' => 'integer',
     ];
 
     /*

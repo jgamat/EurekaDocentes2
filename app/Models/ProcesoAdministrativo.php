@@ -27,6 +27,7 @@ class ProcesoAdministrativo extends Model
          'user_idImpresion',
          'proadm_vcIpImpresion',
          'proadm_vcIpAsignacion',
+         'user_idDesasignador',
        
     ];
 

@@ -77,36 +77,33 @@ class PlanillaPrintController extends Controller
         // Detect flags early for summary logic
         $isTerceroCas = str_contains($tipoNombreLower, 'tercero') || str_contains($tipoNombreLower, 'cas');
         $isAlumno = str_contains($tipoNombreLower, 'alumno');
+        $isAdministrativo = (str_contains($tipoNombreLower, 'admin') && !$isTerceroCas && !$isAlumno);
 
-        // Group rows by cargo preserving original order
+        // Agrupación por cargo para resumen (siempre) pero detalle depende del tipo
         $groups = [];
         foreach ($rows as $r) {
             $cargo = $r->cargo_nombre;
-            if (!array_key_exists($cargo, $groups)) {
-                $groups[$cargo] = [];
-            }
             $groups[$cargo][] = $r;
         }
 
-        // Build detail pages per cargo (13 rows per page)
-    foreach ($groups as $cargoNombre => $items) {
-        $montoCargo = isset($items[0]) ? (float) ($items[0]->monto ?? 0) : 0;
-        $chunks = collect($items)->chunk(13);
-        $ordenDentroCargo = 1; // reinicia numeración por cargo
-        foreach ($chunks as $chunk) {
+        if ($isAdministrativo) {
+            // NUEVA LÓGICA: páginas por local (lista global), permitiendo múltiples cargos en la misma página.
+            // Se usa numeración global continua.
+            $ordenGlobal = 1;
+            $rowChunks = $rows->chunk(13); // mismo tamaño que docentes
+            foreach ($rowChunks as $chunk) {
                 $pages[] = [
                     'type' => 'detail',
                     'local_id' => null,
                     'local_nombre' => $localNombre,
                     'cargo_id' => null,
-                    'cargo_nombre' => $cargoNombre,
-                    'monto_cargo' => $montoCargo,
+                    'cargo_nombre' => null, // no se muestra en cabecera para administrativos
+                    'monto_cargo' => 0,
                     'planilla_numero' => (int) $pla->pla_iNumero,
                     'page_no' => $pageNo++,
-            'rows' => $chunk->map(function ($r) use (&$ordenDentroCargo) {
+                    'rows' => $chunk->map(function ($r) use (&$ordenGlobal) {
                         return [
-                // numeración por cargo (no global)
-                'orden' => $ordenDentroCargo++,
+                            'orden' => $ordenGlobal++,
                             'codigo' => $r->codigo,
                             'dni' => $r->dni,
                             'nombres' => $r->nombres,
@@ -118,9 +115,46 @@ class PlanillaPrintController extends Controller
                     })->toArray(),
                 ];
             }
+            // Marcar la última página de detalle para insertar línea de "Monto por local"
+            if (!empty($pages)) {
+                $totalLocal = $rows->sum(fn($r)=> (float)$r->monto);
+                $pages[array_key_last($pages)]['is_last_detail'] = true;
+                $pages[array_key_last($pages)]['total_local'] = $totalLocal;
+            }
+        } else {
+            // LÓGICA EXISTENTE: páginas por cargo
+            foreach ($groups as $cargoNombre => $items) {
+                $montoCargo = isset($items[0]) ? (float) ($items[0]->monto ?? 0) : 0;
+                $chunks = collect($items)->chunk(13);
+                $ordenDentroCargo = 1; // reinicia numeración por cargo
+                foreach ($chunks as $chunk) {
+                    $pages[] = [
+                        'type' => 'detail',
+                        'local_id' => null,
+                        'local_nombre' => $localNombre,
+                        'cargo_id' => null,
+                        'cargo_nombre' => $cargoNombre,
+                        'monto_cargo' => $montoCargo,
+                        'planilla_numero' => (int) $pla->pla_iNumero,
+                        'page_no' => $pageNo++,
+                        'rows' => $chunk->map(function ($r) use (&$ordenDentroCargo) {
+                            return [
+                                'orden' => $ordenDentroCargo++,
+                                'codigo' => $r->codigo,
+                                'dni' => $r->dni,
+                                'nombres' => $r->nombres,
+                                'local_nombre' => $r->local_nombre,
+                                'cargo_nombre' => $r->cargo_nombre,
+                                'monto' => (float) $r->monto,
+                                'cred_numero' => $r->cred_numero,
+                            ];
+                        })->toArray(),
+                    ];
+                }
+            }
         }
 
-        // Append summary page for Docentes (not Tercero/CAS) only
+        // Append summary page para docentes y administrativos estándar (no tercero/cas ni alumnos)
         if (!$isTerceroCas && !$isAlumno) {
             $resumen = [];
             $granTotal = 0.0;
@@ -164,6 +198,9 @@ class PlanillaPrintController extends Controller
             'total_pages' => count($pages),
             'es_tercero_cas' => $isTerceroCas,
             'es_alumno' => $isAlumno,
+            'es_admin' => $isAdministrativo,
+            'profec_vcFimaDirector' => $fecha?->profec_vcFimaDirector,
+            'profec_vcFimaJefe' => $fecha?->profec_vcFimaJefe,
         ];
 
         // Para reimpresión, forzar uso de Blade compilado y fondos si existen

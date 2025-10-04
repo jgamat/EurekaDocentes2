@@ -15,9 +15,10 @@ class ExperienciaAdmision extends Model
     public $incrementing = true;
 
     protected $fillable = [
-        'expadm_vcNombre',
+        'expadmma_iCodigo', // FK al maestro
+        'profec_iCodigo',   // FK a proceso fecha
+        // 'expadm_vcNombre', // (No existe en la tabla según error reportado; comentar hasta validar esquema real)
         'expadm_fMonto'
-       
     ];
 
     protected $casts = [
@@ -63,5 +64,14 @@ class ExperienciaAdmision extends Model
         return $this->hasMany(ProcesoAdministrativo::class, 'expadm_iCodigo');
     }
 
+    // Accessor para exponer nombre del cargo desde el maestro
+    public function getNombreAttribute(): ?string
+    {
+        // Evita N+1 si ya está cargada la relación maestro
+        if ($this->relationLoaded('maestro')) {
+            return optional($this->maestro)->expadmma_vcNombre;
+        }
+        return $this->maestro?->expadmma_vcNombre;
+    }
     
 }

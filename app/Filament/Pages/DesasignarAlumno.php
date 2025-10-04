@@ -130,8 +130,14 @@ class DesasignarAlumno extends Page implements HasForms
             Notification::make()->title('No asignado')->body('El alumno no está asignado en esta fecha.')->danger()->send();
             return;
         }
-        if ($asignacion->user_id !== auth()->id()) {
-            Notification::make()->title('No autorizado')->body('Solo el usuario que asignó puede desasignar.')->danger()->send();
+        $user = auth()->user();
+        $esPlanilla = $user && method_exists($user, 'hasRole') ? $user->hasRole('Planilla') : false;
+        if ($asignacion->user_id !== auth()->id() && !$esPlanilla) {
+            Notification::make()
+                ->title('No autorizado')
+                ->body('Solo el usuario que asignó o un usuario con rol Planilla puede desasignar.')
+                ->danger()
+                ->send();
             return;
         }
 
@@ -150,6 +156,8 @@ class DesasignarAlumno extends Page implements HasForms
             'loc_iCodigo' => null,
             'expadm_iCodigo' => null,
             'proalu_dtFechaAsignacion' => null,
+            'user_idDesasignador' => auth()->id(),
+            'proalu_iCredencial' => false,
         ]);
 
         if ($localCargo && $localCargo->loccar_iOcupado > 0) {

@@ -37,7 +37,17 @@ class AdministrativoResource extends Resource
                     Forms\Components\TextInput::make('adm_vcDni')
                         ->label('DNI')
                         ->required()
-                        ->maxLength(15),
+                        ->maxLength(15)
+                        ->length(8)
+                        ->numeric()
+                        ->unique(table: 'administrativo', column: 'adm_vcDni', ignoreRecord: true)
+                        ->validationAttribute('DNI')
+                        ->helperText('Debe ser único. Ingrese 8 dígitos.')
+                        ->validationMessages([
+                            'unique' => 'El DNI ya está registrado.',
+                            'length' => 'El DNI debe tener exactamente 8 dígitos.',
+                            'numeric' => 'El DNI solo debe contener números.',
+                        ]),
                     Forms\Components\TextInput::make('adm_vcCodigo')
                         ->label('Código')
                         ->maxLength(30),
