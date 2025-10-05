@@ -13,12 +13,15 @@ use App\Models\ProcesoFecha;
 use App\Exports\ConsolidadoPlanillasExport; 
 use Maatwebsite\Excel\Facades\Excel; 
 use Filament\Notifications\Notification; 
-use Illuminate\Database\Eloquent\Model; 
+use Illuminate\Database\Eloquent\Model;
+use BezhanSalleh\FilamentShield\Traits\HasPageShield;
+
  
 
 class ReporteConsolidadoPlanillas extends Page implements HasForms
 {
     use InteractsWithForms;
+    use HasPageShield; 
 
     protected static ?string $navigationIcon = 'heroicon-o-document-text';
     protected static string $view = 'filament.pages.reporte-consolidado-planillas';
