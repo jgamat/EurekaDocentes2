@@ -30,11 +30,14 @@ use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
+use App\Support\Traits\UsesGlobalContext;
+use App\Support\CurrentContext;
 
 class ConsultarCargos extends Page implements HasForms, HasTable
 {
     use InteractsWithForms, InteractsWithTable;
     use HasPageShield;
+    use UsesGlobalContext;
 
     protected static ?string $navigationIcon = 'heroicon-o-briefcase';
     protected static ?string $navigationGroup = 'Administración de Locales';
@@ -46,23 +49,31 @@ class ConsultarCargos extends Page implements HasForms, HasTable
         'proceso_fecha_id' => null,
     ];
 
+    protected $listeners = ['context-changed' => 'onContextChanged'];
+
     public function mount(): void
     {
-        $abierto = Proceso::where('pro_iAbierto', true)->first();
-        if ($abierto) {
-            $this->filters['proceso_id'] = $abierto->pro_iCodigo;
-            $activa = $abierto->procesoFecha()->where('profec_iActivo', true)->first();
-            if ($activa) {
-                $this->filters['proceso_fecha_id'] = $activa->profec_iCodigo;
-            }
-        }
+        // Inicializar desde contexto global
+        $this->filters['proceso_id'] = app(CurrentContext::class)->procesoId();
+        $this->filters['proceso_fecha_id'] = app(CurrentContext::class)->fechaId();
         $this->form->fill($this->filters);
+    }
+
+    public function onContextChanged(): void
+    {
+        $this->applyContextFromGlobal(['proceso_id','proceso_fecha_id'], [], 'Contexto aplicado.');
+        $state = $this->form->getState();
+        $this->filters['proceso_id'] = $state['proceso_id'] ?? null;
+        $this->filters['proceso_fecha_id'] = $state['proceso_fecha_id'] ?? null;
     }
 
     public function form(Form $form): Form
     {
         return $form
             ->schema([
+                // Fecha actual global en modo solo lectura
+                $this->fechaActualPlaceholder('proceso_fecha_id'),
+                // Selects ocultos (siguen presentes para mantener estado)
                 Select::make('proceso_id')
                     ->label('Proceso Abierto')
                     ->options(Proceso::where('pro_iAbierto', true)->orderBy('pro_vcNombre')->pluck('pro_vcNombre', 'pro_iCodigo'))
@@ -71,8 +82,7 @@ class ConsultarCargos extends Page implements HasForms, HasTable
                         $this->filters['proceso_id'] = $state;
                         $this->filters['proceso_fecha_id'] = null;
                     })
-                    ->extraAttributes(['class'=>'w-full','style'=>'min-width:420px;'])
-                    ->columnSpan(12),
+                    ->hidden(),
                 Select::make('proceso_fecha_id')
                     ->label('Fecha Activa')
                     ->options(function(){
@@ -85,8 +95,7 @@ class ConsultarCargos extends Page implements HasForms, HasTable
                     })
                     ->reactive()
                     ->afterStateUpdated(fn($state)=> $this->filters['proceso_fecha_id'] = $state)
-                    ->extraAttributes(['class'=>'w-full','style'=>'min-width:420px;'])
-                    ->columnSpan(12),
+                    ->hidden(),
             ])
             ->columns(12)
             ->statePath('filters');

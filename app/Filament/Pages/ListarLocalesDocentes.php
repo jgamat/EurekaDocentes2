@@ -13,12 +13,15 @@ use Filament\Forms\Components\Select;
 use Illuminate\Database\Eloquent\Builder; 
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 use Filament\Pages\Actions\Action;
+use App\Support\Traits\UsesGlobalContext;
+use App\Support\CurrentContext;
 
 class ListarLocalesDocentes extends Page implements Tables\Contracts\HasTable, Forms\Contracts\HasForms
 {
     use Tables\Concerns\InteractsWithTable; 
     use Forms\Concerns\InteractsWithForms; 
     use HasPageShield;
+    use UsesGlobalContext;
 
     protected static ?string $navigationIcon = 'heroicon-o-building-office';
     protected static ?string $navigationLabel = 'Locales Docentes';
@@ -26,13 +29,24 @@ class ListarLocalesDocentes extends Page implements Tables\Contracts\HasTable, F
     protected static ?int $navigationSort = 35;
     protected static string $view = 'filament.pages.listar-locales-docentes';
 
-    public ?int $procesoFechaId = null;
+    public array $data = [];
+    public ?int $proceso_fecha_id = null; // estandarizar nombre para el trait
     protected array $vacantesCache = [];
+
+    protected $listeners = ['context-changed' => 'onContextChanged'];
 
     public function mount(): void
     {
-        // Preseleccionar la fecha activa si existe
-        $this->procesoFechaId = ProcesoFecha::where('profec_iActivo', true)->value('profec_iCodigo');
+        $this->proceso_fecha_id = app(CurrentContext::class)->fechaId();
+        $this->form->fill(['proceso_fecha_id' => $this->proceso_fecha_id]);
+    }
+
+    public function onContextChanged(): void
+    {
+        $this->proceso_fecha_id = app(CurrentContext::class)->fechaId();
+        $this->form->fill(['proceso_fecha_id' => $this->proceso_fecha_id]);
+        $this->resetTable();
+        \Filament\Notifications\Notification::make()->title('Contexto actualizado')->body('Se aplicó la nueva fecha global.')->info()->send();
     }
 
     // Único botón Imprimir en el header
@@ -62,22 +76,17 @@ class ListarLocalesDocentes extends Page implements Tables\Contracts\HasTable, F
         return static::canAccess();
     }
 
-    protected function getFormSchema(): array
-    {
-        return [
-            Select::make('procesoFechaId')
-                ->label('Fecha Activa')
-                ->options(ProcesoFecha::where('profec_iActivo', true)->orderByDesc('profec_dFecha')->pluck('profec_dFecha', 'profec_iCodigo'))
-                ->searchable()
-                ->reactive()
-                ->afterStateUpdated(fn ($state) => $this->resetTable())
-                ->native(false),
-        ];
-    }
-
     public function form(Forms\Form $form): Forms\Form
     {
-        return $form->schema($this->getFormSchema());
+        return $form->schema([
+            // Fecha actual global solo lectura
+            $this->fechaActualPlaceholder('proceso_fecha_id'),
+            // Campo oculto para mantener compatibilidad si fuese necesario
+            Select::make('proceso_fecha_id')
+                ->label('Fecha Global')
+                ->options(ProcesoFecha::where('profec_iActivo', true)->orderByDesc('profec_dFecha')->pluck('profec_dFecha', 'profec_iCodigo'))
+                ->hidden(),
+        ])->statePath('data');
     }
 
     // (Se removió acción de imprimir en el header para evitar botón duplicado)
@@ -88,12 +97,12 @@ class ListarLocalesDocentes extends Page implements Tables\Contracts\HasTable, F
             ->query(function (): Builder {
                 $query = Locales::query()
                     ->with(['localesMaestro'])
-                    ->when($this->procesoFechaId, fn ($q) => $q->where('profec_iCodigo', $this->procesoFechaId))
+                    ->when($this->proceso_fecha_id, fn ($q) => $q->where('profec_iCodigo', $this->proceso_fecha_id))
                     // Solo locales que tengan al menos uno de los cargos (maestro) 2,3,4 en la fecha seleccionada
                     ->whereHas('experienciaAdmision', function ($q) {
                         $q->whereIn('expadmma_iCodigo', [2,3,4]);
-                        if ($this->procesoFechaId) {
-                            $q->where('profec_iCodigo', $this->procesoFechaId);
+                        if ($this->proceso_fecha_id) {
+                            $q->where('profec_iCodigo', $this->proceso_fecha_id);
                         }
                     });
                 // Pre-cargar cache de vacantes/ocupados para esta fecha (evita N+1)
@@ -141,13 +150,13 @@ class ListarLocalesDocentes extends Page implements Tables\Contracts\HasTable, F
     protected function loadVacantesCache(): void
     {
         $this->vacantesCache = [];
-        if (!$this->procesoFechaId) {
+        if (!$this->proceso_fecha_id) {
             return;
         }
         $rows = \DB::table('localcargo as lc')
             ->join('experienciaadmision as ea', 'ea.expadm_iCodigo', '=', 'lc.expadm_iCodigo')
             ->selectRaw('lc.loc_iCodigo, ea.expadmma_iCodigo as maestro_id, SUM(lc.loccar_iVacante) as vac, SUM(lc.loccar_iOcupado) as ocu')
-            ->where('ea.profec_iCodigo', $this->procesoFechaId)
+            ->where('ea.profec_iCodigo', $this->proceso_fecha_id)
             ->whereIn('ea.expadmma_iCodigo', [2,3,4])
             ->groupBy('lc.loc_iCodigo', 'ea.expadmma_iCodigo')
             ->get();

@@ -31,11 +31,14 @@ use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
+use App\Support\Traits\UsesGlobalContext;
+use App\Support\CurrentContext;
 
 class ReporteAsignados extends Page implements HasTable, HasForms
 {
     use InteractsWithTable, InteractsWithForms;
     use HasPageShield;
+    use UsesGlobalContext;
 
     protected static ?string $navigationIcon = 'heroicon-o-document-text';
     protected static ?string $navigationGroup = 'Reportes';
@@ -51,34 +54,41 @@ class ReporteAsignados extends Page implements HasTable, HasForms
         'tipo' => null,
     ];
 
+    protected $listeners = ['context-changed' => 'onContextChanged'];
+
     public function mount(): void
     {
-        
-        $abierto = Proceso::where('pro_iAbierto', true)->first();
-        if ($abierto) {
-            $this->filters['proceso_id'] = $abierto->pro_iCodigo;
-            $activa = $abierto->procesoFecha()->where('profec_iActivo', true)->first();
-            if ($activa) {
-                $this->filters['proceso_fecha_id'] = $activa->profec_iCodigo;
-            }
-        }
+        $this->filters['proceso_id'] = app(CurrentContext::class)->procesoId();
+        $this->filters['proceso_fecha_id'] = app(CurrentContext::class)->fechaId();
         $this->form->fill($this->filters);
+    }
+
+    public function onContextChanged(): void
+    {
+        $this->applyContextFromGlobal(['proceso_id','proceso_fecha_id'], [], 'Contexto actualizado.');
+        $state = $this->form->getState();
+        $this->filters['proceso_id'] = $state['proceso_id'] ?? null;
+        $this->filters['proceso_fecha_id'] = $state['proceso_fecha_id'] ?? null;
     }
 
     public function form(Form $form): Form
     {
         return $form
             ->schema([
+                // Mostrar fecha global actual
+                // Colocar en su propia fila siempre (ocupa 12) para que el select quede debajo
+                $this->fechaActualPlaceholder('proceso_fecha_id')
+                    ->columnSpan(12),
+                // Selects ocultos para mantener compatibilidad
                 Select::make('proceso_id')
                     ->label('Proceso Abierto')
                     ->options(Proceso::where('pro_iAbierto', true)->orderBy('pro_vcNombre')->pluck('pro_vcNombre', 'pro_iCodigo'))
                     ->reactive()
                     ->afterStateUpdated(function($state){
                         $this->filters['proceso_id'] = $state;
-                        // Reset fecha al cambiar proceso
                         $this->filters['proceso_fecha_id'] = null;
                     })
-                    ->columnSpan(12),
+                    ->hidden(),
                 Select::make('proceso_fecha_id')
                     ->label('Fecha Activa')
                     ->options(function(){
@@ -91,8 +101,7 @@ class ReporteAsignados extends Page implements HasTable, HasForms
                     })
                     ->reactive()
                     ->afterStateUpdated(fn($state)=> $this->filters['proceso_fecha_id'] = $state)
-                    ->placeholder('Seleccione fecha')
-                    ->columnSpan(12),
+                    ->hidden(),
                 Select::make('tipo')
                     ->label('Tipo de Personal')
                     ->options([
@@ -102,9 +111,8 @@ class ReporteAsignados extends Page implements HasTable, HasForms
                     ])
                     ->reactive()
                     ->afterStateUpdated(fn($state) => $this->filters['tipo'] = $state)
-                    ->extraAttributes(['class'=>'w-full','style'=>'min-width:460px;'])
-                    ->columnSpan(['default'=>12,'md'=>6,'xl'=>6]),
-                // Se elimina el select de Usuario Asignador: ahora los datos se restringen automáticamente por roles
+            // Fuerza a estar debajo ocupando ancho completo; podemos ajustar en futuro si se requiere dividir
+            ->columnSpan(12),
             ])
             ->columns(12)
             ->statePath('filters');

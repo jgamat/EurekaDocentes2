@@ -11,12 +11,14 @@ use App\Exports\PlantillaAsignacionAlumnosExport;
 use App\Exports\ErroresAsignacionAlumnosExport;
 use App\Services\Import\AlumnoAssignmentImportService;
 use App\Filament\Pages\Concerns\WithAssignmentFileHandling;
+use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 
 class ImportarAsignacionAlumnos extends Page implements Forms\Contracts\HasForms
 {
     use Forms\Concerns\InteractsWithForms;
     use WithFileUploads;
     use WithAssignmentFileHandling;
+       use HasPageShield; 
 
     protected static ?string $navigationIcon = 'heroicon-o-document-text';
     protected static ?string $navigationGroup = 'Asignaciones';

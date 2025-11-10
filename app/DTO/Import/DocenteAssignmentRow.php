@@ -19,7 +19,10 @@ class DocenteAssignmentRow
     // docentePk: se usa doc_vcCodigo (string) como identificador lógico en asignaciones
     public ?string $docentePk = null,
         public ?int $cargoId = null,
+        // localId: SIEMPRE debe ser loc_iCodigo (instancia por fecha). Si aún no existe se deja null hasta import().
         public ?int $localId = null,
+        // localMaestroId: locma_iCodigo referencial cuando se resolvió el maestro pero no la instancia
+        public ?int $localMaestroId = null,
         public ?int $procesoFechaId = null,
     ) {}
 }

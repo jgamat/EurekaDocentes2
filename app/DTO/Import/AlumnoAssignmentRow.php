@@ -18,7 +18,8 @@ class AlumnoAssignmentRow
     public ?string $localNombre = null; // nombre del local
     public ?string $fechaISO = null; // fecha asignación normalizada (Y-m-d)
     public ?int $cargoId = null; // expadm_iCodigo
-    public ?int $localId = null; // loc_iCodigo
+    public ?int $localId = null; // loc_iCodigo (instancia). Nunca debe almacenar locma_iCodigo.
+    public ?int $localMaestroId = null; // locma_iCodigo cuando sólo se resolvió el maestro
     public ?int $procesoFechaId = null; // profec_iCodigo
     public array $errors = [];
     public array $warnings = [];

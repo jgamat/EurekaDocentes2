@@ -7,6 +7,8 @@ use App\Models\LocalCargo;
 use App\Models\Locales;
 use App\Models\ProcesoAlumno;
 use App\Models\ProcesoFecha;
+use App\Support\CurrentContext;
+use App\Support\Traits\UsesGlobalContext;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -21,6 +23,7 @@ use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 class AsignarAlumnos extends Page implements HasForms
 {
     use InteractsWithForms;
+    use UsesGlobalContext;
     use HasPageShield;
     
 
@@ -42,20 +45,46 @@ class AsignarAlumnos extends Page implements HasForms
 
     public function mount(): void
     {
-        $this->form->fill();
+        // Inicializar usando el contexto global
+        $this->fillContextDefaults(['proceso_fecha_id']);
+        // Rehidratar inmediatamente el campo oculto desde el contexto global
+        $ctx = app(CurrentContext::class);
+        $this->form?->fill(['proceso_fecha_id' => $ctx->fechaId()]);
     }
 
     public function form(Form $form): Form
     {
         return $form
             ->schema([
+                // 0. Mostrar la fecha del proceso (global) en solo lectura
+                $this->fechaActualPlaceholder('proceso_fecha_id'),
                 // 1. Fecha del Proceso
                 Select::make('proceso_fecha_id')
-                    ->label('1. Seleccione la Fecha del Proceso')
+                    ->label('Fecha del Proceso (global)')
                     ->options(ProcesoFecha::where('profec_iActivo', true)->pluck('profec_dFecha', 'profec_iCodigo'))
-                    ->searchable()
                     ->required()
-                    ->reactive(),
+                    ->reactive()
+                    ->hidden()
+                    ->dehydrated(true)
+                    ->default(fn() => app(CurrentContext::class)->fechaId())
+                    ->afterStateUpdated(function($state, callable $set){
+                        // Reset dependientes (Local y Cargo) y búsqueda al cambiar la fecha
+                        $set('local_id', null);
+                        $set('experiencia_admision_id', null);
+                        $set('alumno_codigo', null);
+                        $this->plazaSeleccionada = null;
+                        // Disparar evento para limpiar tablas/componentes asociados
+                        $this->dispatch(
+                            'contextoActualizado',
+                            procesoFechaId: $state,
+                            localId: null,
+                            experienciaAdmisionId: null
+                        );
+                        Notification::make()
+                            ->title('Se reinició Local y Cargo por cambio de Fecha')
+                            ->info()
+                            ->send();
+                    }),
 
                 // 2. Local dependiente de la fecha
                Select::make('local_id')
@@ -139,6 +168,8 @@ class AsignarAlumnos extends Page implements HasForms
                     ->label('Buscar y Asignar Alumno')
                     ->placeholder('Escribe apellidos, nombres, DNI o código')
                     ->searchable()
+                    ->helperText('Primero seleccione Local y Cargo; luego elija al alumno para asignar.')
+                    ->disabled(fn (callable $get) => empty($get('local_id')) || empty($get('experiencia_admision_id')))
                     ->getSearchResultsUsing(function (string $search): array {
                         if (strlen($search) < 2) return [];
                         return Alumno::query()
@@ -170,9 +201,29 @@ class AsignarAlumnos extends Page implements HasForms
             ->statePath('data');
     }
 
+    #[On('context-changed')]
+    public function onContextChanged(): void
+    {
+        $this->applyContextFromGlobal(['proceso_fecha_id'], ['local_id','experiencia_admision_id','alumno_codigo'], 'Se aplicó la Fecha seleccionada globalmente y se reiniciaron los campos dependientes.');
+        $this->plazaSeleccionada = null;
+        $this->dispatch(
+            'contextoActualizado',
+            procesoFechaId: app(CurrentContext::class)->fechaId(),
+            localId: null,
+            experienciaAdmisionId: null
+        );
+    }
+
     public function asignarAlumnoDirecto(): void
     {
         $data = $this->form->getState();
+        // Reforzar integridad del contexto: usar CurrentContext si falta la fecha y volcarla al state
+        $ctx = app(CurrentContext::class);
+        $fechaId = $data['proceso_fecha_id'] ?? $ctx->fechaId();
+        if (!isset($data['proceso_fecha_id'])) {
+            $this->form->fill(['proceso_fecha_id' => $fechaId]);
+            $data['proceso_fecha_id'] = $fechaId;
+        }
 
     $codigo = $data['alumno_codigo'] ?? null; // ahora proviene directamente del Select searchable
         $alumno = $codigo ? Alumno::where('alu_vcCodigo', $codigo)->first() : null;
@@ -186,7 +237,7 @@ class AsignarAlumnos extends Page implements HasForms
         }
 
         if (
-            empty($data['proceso_fecha_id']) ||
+            empty($fechaId) ||
             empty($data['local_id']) ||
             empty($data['experiencia_admision_id']) ||
             empty($codigo)
@@ -215,7 +266,7 @@ class AsignarAlumnos extends Page implements HasForms
         
 
         // Nueva validación global: el alumno no debe tener ya una asignación activa en la misma fecha (sin importar local/cargo)
-        $asignacionActivaMismaFecha = ProcesoAlumno::where('profec_iCodigo', $data['proceso_fecha_id'])
+        $asignacionActivaMismaFecha = ProcesoAlumno::where('profec_iCodigo', $fechaId)
             ->where('alu_vcCodigo', $codigo)
             ->where('proalu_iAsignacion', 1)
             ->first();
@@ -242,12 +293,12 @@ class AsignarAlumnos extends Page implements HasForms
             return;
         }
 
-        $asignacionPendiente = ProcesoAlumno::where('profec_iCodigo', $data['proceso_fecha_id'])
+        $asignacionPendiente = ProcesoAlumno::where('profec_iCodigo', $fechaId)
             ->where('alu_vcCodigo', $codigo)
             ->where('proalu_iAsignacion', 0)
             ->first();
 
-    DB::transaction(function () use ($plaza, $alumno, $data, $asignacionPendiente, $codigo) {
+    DB::transaction(function () use ($plaza, $alumno, $data, $asignacionPendiente, $codigo, $fechaId) {
         $ip = request()->header('X-Forwarded-For') ? explode(',', request()->header('X-Forwarded-For'))[0] : request()->ip();
             if ($asignacionPendiente) {
                 $asignacionPendiente->update([
@@ -261,7 +312,7 @@ class AsignarAlumnos extends Page implements HasForms
                 ]);
             } else {
                 ProcesoAlumno::create([
-                    'profec_iCodigo' => $data['proceso_fecha_id'],
+                    'profec_iCodigo' => $fechaId,
                     'loc_iCodigo' => $plaza->loc_iCodigo,
                     'expadm_iCodigo' => $plaza->expadm_iCodigo,
                     'alu_vcCodigo' => $codigo,
@@ -282,7 +333,7 @@ class AsignarAlumnos extends Page implements HasForms
         // Refrescar estado y mantener selección
         $this->plazaSeleccionada = $plaza->refresh();
         $this->form->fill([
-            'proceso_fecha_id' => $data['proceso_fecha_id'],
+            'proceso_fecha_id' => $fechaId,
             'local_id' => $plaza->loc_iCodigo,
             'experiencia_admision_id' => $plaza->expadm_iCodigo,
             'alumno_codigo' => null,

@@ -9,6 +9,7 @@ use Filament\Notifications\Notification;
 use App\Filament\Pages\Concerns\WithAssignmentFileHandling;
 use App\Services\Import\CargoMassUpdateService;
 use App\DTO\Import\CargoMontoUpdateRow;
+use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 
 class ImportarCargosActualizar extends Page
 {
@@ -18,6 +19,7 @@ class ImportarCargosActualizar extends Page
     use Forms\Concerns\InteractsWithForms;
     use WithFileUploads;
     use WithAssignmentFileHandling;
+       use HasPageShield; 
     
     /**
      * Página para actualización masiva de montos de cargos a partir del Excel exportado desde ConsultarCargos.

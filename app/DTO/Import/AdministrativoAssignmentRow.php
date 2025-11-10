@@ -21,7 +21,8 @@ class AdministrativoAssignmentRow
 
     // IDs resueltos
     public ?int $cargoId = null; // instancia ExperienciaAdmision (o equivalente para administrativos si difiere después)
-    public ?int $localId = null; // instancia Locales
+    public ?int $localId = null; // instancia Locales (loc_iCodigo). Nunca debe contener locma_iCodigo.
+    public ?int $localMaestroId = null; // locma_iCodigo cuando se reconoció el maestro pero falta crear instancia
     public ?int $procesoFechaId = null;
 
     // Clave lógica de administrativo (código) para insertar relación proceso

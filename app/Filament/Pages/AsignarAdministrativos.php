@@ -7,6 +7,8 @@ use App\Models\LocalCargo;
 use App\Models\Locales;
 use App\Models\ProcesoAdministrativo;
 use App\Models\ProcesoFecha;
+use App\Support\CurrentContext;
+use App\Support\Traits\UsesGlobalContext;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -23,7 +25,8 @@ use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 class AsignarAdministrativos extends Page implements HasForms
 {
     use InteractsWithForms;
-     use HasPageShield;
+    use HasPageShield;
+    use UsesGlobalContext;
 
     protected static ?string $navigationIcon = 'heroicon-o-user-plus';
     protected static string $view = 'filament.pages.asignar-administrativos';
@@ -43,20 +46,69 @@ class AsignarAdministrativos extends Page implements HasForms
 
     public function mount(): void
     {
-        $this->form->fill();
+        // Inicializar usando el contexto global
+        $this->fillContextDefaults(['proceso_fecha_id']);
+        $this->ensureContextIntegrity();
+    }
+
+    #[On('context-changed')]
+    public function onContextChanged(): void
+    {
+        $ctx = app(CurrentContext::class);
+        $nuevaFecha = $ctx->fechaId();
+        $this->form->fill([
+            'proceso_fecha_id' => $nuevaFecha,
+            'local_id' => null,
+            'experiencia_admision_id' => null,
+            'administrativo_dni' => null,
+        ]);
+        $this->plazaSeleccionada = null;
+        $this->dispatch(
+            'contextoActualizado',
+            procesoFechaId: $nuevaFecha,
+            localId: null,
+            experienciaAdmisionId: null
+        );
+        Notification::make()
+            ->title('Contexto actualizado')
+            ->body('Se aplicó la Fecha global y se reiniciaron los campos dependientes.')
+            ->info()
+            ->send();
     }
 
     public function form(Form $form): Form
     {
         return $form
             ->schema([
-                // 1. Fecha del Proceso
+                // 0. Mostrar la fecha del proceso (global) en solo lectura
+                $this->fechaActualPlaceholder('proceso_fecha_id'),
+                // 1. Fecha del Proceso (global, oculta)
                 Select::make('proceso_fecha_id')
-                    ->label('1. Seleccione la Fecha del Proceso')
+                    ->label('Fecha del Proceso (global)')
                     ->options(ProcesoFecha::where('profec_iActivo', true)->pluck('profec_dFecha', 'profec_iCodigo'))
-                    ->searchable()
                     ->required()
-                    ->reactive(),
+                    ->reactive()
+                    ->hidden()
+                    ->dehydrated(true)
+                    ->default(fn() => app(CurrentContext::class)->fechaId())
+                    ->afterStateUpdated(function($state, callable $set){
+                        $set('local_id', null);
+                        $set('experiencia_admision_id', null);
+                        $this->plazaSeleccionada = null;
+                        $set('administrativo_dni', null);
+
+                        $this->dispatch(
+                            'contextoActualizado',
+                            procesoFechaId: $state,
+                            localId: null,
+                            experienciaAdmisionId: null
+                        );
+
+                        Notification::make()
+                            ->title('Se reinició Local y Cargo por cambio de Fecha')
+                            ->info()
+                            ->send();
+                    }),
 
                 // 2. Local dependiente de la fecha
                 Select::make('local_id')
@@ -140,6 +192,8 @@ class AsignarAdministrativos extends Page implements HasForms
                     ->label('Buscar y Asignar Administrativo')
                     ->searchable()
                     ->placeholder('Escribe nombre, DNI o código')
+                    ->helperText('Primero seleccione Local y Cargo; luego elija el administrativo para asignar.')
+                    ->disabled(fn (callable $get) => empty($get('local_id')) || empty($get('experiencia_admision_id')))
                     ->getSearchResultsUsing(function (string $search): array {
                         if (strlen($search) < 2) return [];
                         return Administrativo::query()
@@ -172,6 +226,14 @@ class AsignarAdministrativos extends Page implements HasForms
     public function asignarAdministrativoDirecto(): void
     {
         $data = $this->form->getState();
+        // Reforzar integridad del contexto: usar CurrentContext si falta la fecha
+        $ctx = app(CurrentContext::class);
+        $fechaId = $data['proceso_fecha_id'] ?? $ctx->fechaId();
+        if (!isset($data['proceso_fecha_id'])) {
+            // Volcar la fecha al state para evitar futuros vacíos
+            $this->form->fill(['proceso_fecha_id' => $fechaId]);
+            $data['proceso_fecha_id'] = $fechaId;
+        }
 
         // El DNI llega directamente desde el Select searchable
         $dni = $data['administrativo_dni'] ?? null;
@@ -188,7 +250,7 @@ class AsignarAdministrativos extends Page implements HasForms
 
         // Validaciones de contexto
         if (
-            empty($data['proceso_fecha_id']) ||
+            empty($fechaId) ||
             empty($data['local_id']) ||
             empty($data['experiencia_admision_id']) ||
             empty($dni)
@@ -216,7 +278,7 @@ class AsignarAdministrativos extends Page implements HasForms
         }
 
         // Validación de asignación única activa
-        $asignacionExistente = ProcesoAdministrativo::where('profec_iCodigo', $data['proceso_fecha_id'])
+        $asignacionExistente = ProcesoAdministrativo::where('profec_iCodigo', $fechaId)
             ->where('loc_iCodigo', $data['local_id'])
             ->where('expadm_iCodigo', $data['experiencia_admision_id'])
             ->where('adm_vcDni', $dni)
@@ -224,7 +286,7 @@ class AsignarAdministrativos extends Page implements HasForms
             ->first();
 
         // Nueva validación global: el administrativo no debe tener ya una asignación activa en la misma fecha (sin importar local/cargo)
-        $asignacionActivaMismaFecha = ProcesoAdministrativo::where('profec_iCodigo', $data['proceso_fecha_id'])
+        $asignacionActivaMismaFecha = ProcesoAdministrativo::where('profec_iCodigo', $fechaId)
             ->where('adm_vcDni', $dni)
             ->where('proadm_iAsignacion', 1)
             ->first();
@@ -263,12 +325,12 @@ class AsignarAdministrativos extends Page implements HasForms
         }
 
         // Reusar registro pendiente si existe
-        $asignacionPendiente = ProcesoAdministrativo::where('profec_iCodigo', $data['proceso_fecha_id'])
+        $asignacionPendiente = ProcesoAdministrativo::where('profec_iCodigo', $fechaId)
             ->where('adm_vcDni', $dni)
             ->where('proadm_iAsignacion', 0)
             ->first();
 
-    DB::transaction(function () use ($plaza, $administrativo, $data, $asignacionPendiente, $dni) {
+    DB::transaction(function () use ($plaza, $administrativo, $data, $asignacionPendiente, $dni, $fechaId) {
         $ip = request()->header('X-Forwarded-For') ? explode(',', request()->header('X-Forwarded-For'))[0] : request()->ip();
             if ($asignacionPendiente) {
                 $asignacionPendiente->update([
@@ -282,7 +344,7 @@ class AsignarAdministrativos extends Page implements HasForms
                 ]);
             } else {
                 ProcesoAdministrativo::create([
-                    'profec_iCodigo' => $data['proceso_fecha_id'],
+                    'profec_iCodigo' => $fechaId,
                     'loc_iCodigo' => $plaza->loc_iCodigo,
                     'expadm_iCodigo' => $plaza->expadm_iCodigo,
                     'adm_vcDni' => $dni,
@@ -304,7 +366,7 @@ class AsignarAdministrativos extends Page implements HasForms
         $this->plazaSeleccionada = $plaza->refresh();
 
         $this->form->fill([
-            'proceso_fecha_id' => $data['proceso_fecha_id'],
+            'proceso_fecha_id' => $fechaId,
             'local_id' => $plaza->loc_iCodigo,
             'experiencia_admision_id' => $plaza->expadm_iCodigo,
             'administrativo_dni' => null,
@@ -313,9 +375,24 @@ class AsignarAdministrativos extends Page implements HasForms
         // notificar al componente Livewire de tabla para refrescar
         $this->dispatch(
             'contextoActualizado',
-            procesoFechaId: $data['proceso_fecha_id'],
+            procesoFechaId: $fechaId,
             localId: $plaza->loc_iCodigo,
             experienciaAdmisionId: $plaza->expadm_iCodigo,
         );
+    }
+
+    /**
+     * Garantiza que la fecha del contexto esté presente en el formulario (state),
+     * restaurándola desde CurrentContext si fuese necesario.
+     */
+    protected function ensureContextIntegrity(): void
+    {
+        $state = $this->form?->getState() ?? [];
+        if (empty($state['proceso_fecha_id'])) {
+            $fechaId = app(CurrentContext::class)->fechaId();
+            if ($fechaId) {
+                $this->form?->fill(['proceso_fecha_id' => $fechaId]);
+            }
+        }
     }
 }

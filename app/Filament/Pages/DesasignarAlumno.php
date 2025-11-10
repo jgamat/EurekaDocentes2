@@ -7,6 +7,9 @@ use App\Models\LocalCargo;
 use App\Models\Proceso;
 use App\Models\ProcesoAlumno;
 use App\Models\ProcesoFecha;
+use App\Support\CurrentContext;
+use App\Support\Traits\UsesGlobalContext;
+use Livewire\Attributes\On;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -21,6 +24,7 @@ class DesasignarAlumno extends Page implements HasForms
 {
     use InteractsWithForms;
     use HasPageShield;
+    use UsesGlobalContext;
 
     protected static ?string $navigationIcon = 'heroicon-o-user-minus';
     protected static string $view = 'filament.pages.desasignar-alumno';
@@ -28,41 +32,42 @@ class DesasignarAlumno extends Page implements HasForms
           protected static ?string $navigationGroup = 'Alumnos';
 
     public ?array $data = [];
+    public ?ProcesoAlumno $asignacionActual = null;
 
     public function mount(): void
     {
-        $this->form->fill();
+        $this->fillContextDefaults(['proceso_id','proceso_fecha_id']);
+    }
+
+    #[On('context-changed')]
+    public function onContextChanged(): void
+    {
+        $this->applyContextFromGlobal(['proceso_id','proceso_fecha_id'], ['alumno_codigo'], 'Se aplicó la Fecha y Proceso globales y se reinició la búsqueda de alumno.');
     }
 
     public function getAsignacionActualProperty()
     {
-        $data = $this->form->getState();
-        $codigo = $data['alumno_codigo'] ?? null;
-        $fechaId = $data['proceso_fecha_id'] ?? null;
-
-        if ($codigo && $fechaId) {
-            return ProcesoAlumno::where('alu_vcCodigo', $codigo)
-                ->where('profec_iCodigo', $fechaId)
-                ->where('proalu_iAsignacion', true)
-                ->first();
-        }
-        return null;
+        return $this->asignacionActual; // mantenemos compatibilidad, aunque ya no se usa en Blade
     }
 
     public function form(Form $form): Form
     {
         return $form
             ->schema([
+                // 0. Fecha global en solo lectura
+                $this->fechaActualPlaceholder('proceso_fecha_id'),
+                // 1. Proceso (global oculto)
                 Select::make('proceso_id')
                     ->label('1. Seleccione el Proceso Abierto')
                     ->options(Proceso::where('pro_iAbierto', true)->pluck('pro_vcNombre', 'pro_iCodigo'))
                     ->required()
                     ->reactive()
+                    ->hidden()
                     ->afterStateUpdated(function ($state, callable $set, $livewire) {
                         $set('alumno_codigo', null);
                         $livewire->resetValidation();
                     }),
-
+                // 2. Fecha (global oculta)
                 Select::make('proceso_fecha_id')
                     ->label('2. Seleccione la Fecha Activa')
                     ->options(function (callable $get): Collection {
@@ -74,6 +79,7 @@ class DesasignarAlumno extends Page implements HasForms
                     })
                     ->required(fn (callable $get) => filled($get('proceso_id')))
                     ->reactive()
+                    ->hidden()
                     ->afterStateUpdated(function ($state, callable $set, $livewire) {
                         $set('alumno_codigo', null);
                         $livewire->resetValidation();
@@ -106,15 +112,24 @@ class DesasignarAlumno extends Page implements HasForms
 
                         $fechaId = $get('proceso_fecha_id');
                         if ($fechaId && $state) {
-                            $asignacion = ProcesoAlumno::where('alu_vcCodigo', $state)
+                            $asignacion = ProcesoAlumno::with(['alumno','procesoFecha','usuario','local.localesMaestro','experienciaAdmision.maestro'])
+                                ->where('alu_vcCodigo', $state)
                                 ->where('profec_iCodigo', $fechaId)
-                                ->where('proalu_iAsignacion', true)
+                                ->where('proalu_iAsignacion', 1)
                                 ->first();
                             if (!$asignacion) {
+                                $this->asignacionActual = null;
                                 Notification::make()
                                     ->title('No asignado')
                                     ->body('El alumno no está asignado en esta fecha.')
                                     ->danger()
+                                    ->send();
+                            } else {
+                                $this->asignacionActual = $asignacion;
+                                Notification::make()
+                                    ->title('Asignación encontrada')
+                                    ->body('Puede proceder a desasignar: '.$asignacion->alumno->nombre_completo)
+                                    ->success()
                                     ->send();
                             }
                         }

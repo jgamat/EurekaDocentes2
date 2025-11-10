@@ -146,11 +146,12 @@ class AdministrativoAssignmentImportService
                 $localMaestro = $localMaestroMatch[$locKey] ?? null;
                 if (!$localMaestro) { $dto->errors[] = 'Local no existe en LocalesMaestro'; }
                 else {
+                    $dto->localMaestroId = $localMaestro->locma_iCodigo;
                     if ($dto->procesoFechaId) {
                         $idxL = $localMaestro->locma_iCodigo.'|'.$dto->procesoFechaId;
                         if (isset($instanciaIndex[$idxL])) { $dto->localId = $instanciaIndex[$idxL]; }
-                        else { $dto->warnings[] = 'Instancia local para fecha será creada'; $dto->localId = $localMaestro->locma_iCodigo; }
-                    } else { $dto->warnings[] = 'Local pendiente de fecha'; $dto->localId = $localMaestro->locma_iCodigo; }
+                        else { $dto->warnings[] = 'Instancia local para fecha será creada'; /* localId queda null */ }
+                    } else { $dto->warnings[] = 'Local pendiente de fecha'; }
                 }
             } else { $dto->errors[] = 'Local vacío'; }
 
@@ -211,19 +212,25 @@ class AdministrativoAssignmentImportService
 
                 if ($dto->localNombre) {
                     if (!$dto->localId) {
-                        $maestro = LocalesMaestro::firstOrCreate(['locma_vcNombre' => $dto->localNombre]);
+                        // Crear/obtener maestro y luego instancia
+                        $maestro = $dto->localMaestroId
+                            ? LocalesMaestro::firstOrCreate(['locma_iCodigo' => $dto->localMaestroId], ['locma_vcNombre' => $dto->localNombre])
+                            : LocalesMaestro::firstOrCreate(['locma_vcNombre' => $dto->localNombre]);
                         $inst = Locales::firstOrCreate([
                             'locma_iCodigo' => $maestro->locma_iCodigo,
                             'profec_iCodigo' => $dto->procesoFechaId,
                         ]);
                         $dto->localId = $inst->loc_iCodigo;
-                    } elseif (!Locales::where('loc_iCodigo', $dto->localId)->exists()) {
-                        $maestroId = $dto->localId;
-                        $inst = Locales::firstOrCreate([
-                            'locma_iCodigo' => $maestroId,
-                            'profec_iCodigo' => $dto->procesoFechaId,
-                        ]);
-                        $dto->localId = $inst->loc_iCodigo;
+                    } else {
+                        if (!Locales::where('loc_iCodigo', $dto->localId)->exists()) {
+                            // Era un ID maestro erróneo legado; corregir
+                            $maestroId = $dto->localMaestroId ?? $dto->localId;
+                            $inst = Locales::firstOrCreate([
+                                'locma_iCodigo' => $maestroId,
+                                'profec_iCodigo' => $dto->procesoFechaId,
+                            ]);
+                            $dto->localId = $inst->loc_iCodigo;
+                        }
                     }
                 }
 
@@ -256,6 +263,9 @@ class AdministrativoAssignmentImportService
                     }
                 }
 
+                $ip = request()->header('X-Forwarded-For') ? explode(',', request()->header('X-Forwarded-For'))[0] : request()->ip();
+
+
                 if ($pendiente) {
                     // Actualizar el registro existente para reactivarlo
                     $pendiente->update([
@@ -264,6 +274,7 @@ class AdministrativoAssignmentImportService
                         'proadm_iAsignacion' => 1,
                         'proadm_dtFechaAsignacion' => now(),
                         'user_id' => auth()->id(),
+                        'proadm_vcIpAsignacion'=> $ip,
                     ]);
                     $imported++;
                     // Contabilizar incremento de ocupados igual que una nueva asignación
@@ -276,6 +287,7 @@ class AdministrativoAssignmentImportService
                         'proadm_iAsignacion' => 1,
                         'proadm_dtFechaAsignacion' => now(),
                         'user_id' => auth()->id(),
+                        'proadm_vcIpAsignacion'=> $ip,
                     ]);
                     $imported++;
                 }

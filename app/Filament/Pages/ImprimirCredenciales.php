@@ -6,6 +6,10 @@ use App\Models\ProcesoDocente;
 use App\Models\ProcesoAdministrativo;
 use App\Models\ProcesoAlumno;
 use App\Models\ProcesoFecha;
+use App\Support\CurrentContext;
+use App\Support\Traits\UsesGlobalContext;
+use Carbon\Carbon;
+use Filament\Forms\Components\Placeholder;
 use App\Models\Proceso;
 use Filament\Notifications\Notification;
 use Filament\Forms\Components\Select;
@@ -38,7 +42,7 @@ use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 class ImprimirCredenciales extends Page implements HasForms, HasTable
 {
     use InteractsWithForms, InteractsWithTable;
-    use HasPageShield;
+    use UsesGlobalContext;
 
     protected static ?string $navigationIcon = 'heroicon-o-printer';
     protected static string $view = 'filament.pages.imprimir-credenciales';
@@ -52,7 +56,28 @@ class ImprimirCredenciales extends Page implements HasForms, HasTable
 
     public function mount(): void
     {
-        $this->form->fill();
+        // Inicializar usando el contexto global (Proceso y Fecha)
+        $this->fillContextDefaults(['proceso_id','proceso_fecha_id']);
+        // Asegurar integridad inmediata si el form aún no está hidratado
+        $ctx = app(CurrentContext::class);
+        $this->form?->fill([
+            'proceso_id' => $ctx->procesoId(),
+            'proceso_fecha_id' => $ctx->fechaId(),
+        ]);
+    }
+
+    #[\Livewire\Attributes\On('context-changed')]
+    public function onContextChanged(): void
+    {
+        $this->applyContextFromGlobal(['proceso_id','proceso_fecha_id']);
+        // Limpiar filtros/estado dependiente y URL pendiente de PDF
+        $this->clearFiltersContext();
+        $this->pendingPdfUrl = null;
+        Notification::make()
+            ->title('Contexto actualizado')
+            ->body('Se aplicó la Fecha y Proceso globales y se reiniciaron filtros.')
+            ->info()
+            ->send();
     }
 
     // Helper público para obtener el ID Livewire sin exponer $this->id directamente en blade
@@ -65,15 +90,21 @@ class ImprimirCredenciales extends Page implements HasForms, HasTable
     {
         return $form
             ->schema([
+                // 0. Mostrar la fecha del proceso (global) en solo lectura
+                $this->fechaActualPlaceholder('proceso_fecha_id'),
+                // 1. Proceso (global, oculto)
                 Select::make('proceso_id')
                     ->label('Proceso')
                     ->options(Proceso::query()->where('pro_iAbierto', true)->orderBy('pro_vcNombre')->pluck('pro_vcNombre','pro_iCodigo'))
                     ->searchable()
                     ->reactive()
+                    ->hidden()
                     ->afterStateUpdated(function(){
                         $this->data['proceso_fecha_id'] = null; $this->clearFiltersContext();
                     })
-                    ->required(),
+                    ->required()
+                    ->dehydrated(true),
+                // 2. Fecha (global, oculta)
                 Select::make('proceso_fecha_id')
                     ->label('Fecha')
                     ->options(function(){
@@ -88,7 +119,10 @@ class ImprimirCredenciales extends Page implements HasForms, HasTable
                     })
                     ->reactive()
                     ->afterStateUpdated(fn()=> $this->clearFiltersContext())
-                    ->required(),
+                    ->hidden()
+                    ->required()
+                    ->dehydrated(true),
+                // 3. Tipo de personal
                 Select::make('tipo_personal_id')
                     ->label('Tipo')
                     ->options([1=>'Docentes',2=>'Administrativos',3=>'Alumnos'])
@@ -650,9 +684,29 @@ class ImprimirCredenciales extends Page implements HasForms, HasTable
         $anvPath = $fecha?->profec_vcUrlAnverso ? storage_path('app/public/'.$fecha->profec_vcUrlAnverso) : public_path('storage/templates/anverso.jpg');
         $revPath = $fecha?->profec_vcUrlReverso ? storage_path('app/public/'.$fecha->profec_vcUrlReverso) : public_path('storage/templates/reverso.jpg');
         $sessionKeyAnv='plantilla_anv_'.$procesoFechaId; $sessionKeyRev='plantilla_rev_'.$procesoFechaId;
-        $anvB64=session()->get($sessionKeyAnv); $revB64=session()->get($sessionKeyRev);
-        if(!$anvB64 && file_exists($anvPath)){ $anvB64=@base64_encode(file_get_contents($anvPath)); session()->put($sessionKeyAnv,$anvB64);} 
-        if(!$revB64 && file_exists($revPath)){ $revB64=@base64_encode(file_get_contents($revPath)); session()->put($sessionKeyRev,$revB64);} 
+        $cachedAnv=session()->get($sessionKeyAnv); $cachedRev=session()->get($sessionKeyRev);
+        $anvB64 = null; $revB64 = null;
+        // Recalcular si no existe cache, si cambió la ruta o si el archivo fue actualizado
+        if (file_exists($anvPath)) {
+            $anvMtime = @filemtime($anvPath) ?: 0;
+            if (is_array($cachedAnv) && ($cachedAnv['path'] ?? null) === $anvPath && ($cachedAnv['mtime'] ?? 0) === $anvMtime) {
+                $anvB64 = $cachedAnv['b64'] ?? null;
+            }
+            if (!$anvB64) {
+                $anvB64 = @base64_encode(file_get_contents($anvPath));
+                session()->put($sessionKeyAnv, ['path'=>$anvPath,'mtime'=>$anvMtime,'b64'=>$anvB64]);
+            }
+        }
+        if (file_exists($revPath)) {
+            $revMtime = @filemtime($revPath) ?: 0;
+            if (is_array($cachedRev) && ($cachedRev['path'] ?? null) === $revPath && ($cachedRev['mtime'] ?? 0) === $revMtime) {
+                $revB64 = $cachedRev['b64'] ?? null;
+            }
+            if (!$revB64) {
+                $revB64 = @base64_encode(file_get_contents($revPath));
+                session()->put($sessionKeyRev, ['path'=>$revPath,'mtime'=>$revMtime,'b64'=>$revB64]);
+            }
+        }
     Log::info('Credenciales: renderizando HTML de bulk');
     Log::info('Credenciales: ids por tipo', [ 'docentes' => count($idsDoc), 'administrativos' => count($idsAdm), 'alumnos' => count($idsAlu) ]);
         $html = view('credenciales.bulk',[ 'pages'=>$pages,'generado'=>now(),'anverso'=>$anvB64,'reverso'=>$revB64,'offsets'=>[

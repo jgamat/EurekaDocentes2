@@ -10,6 +10,11 @@ class FilamentHooksServiceProvider extends ServiceProvider
 {
     public function boot(): void
     {
-    // Password reset link hook removed
+        // Register global render hooks
+        \Illuminate\Support\Facades\Event::listen(ServingFilament::class, function () {
+            Filament::registerRenderHook('panels::topbar.start', function () {
+                return view('filament.partials.context-switcher')->render();
+            });
+        });
     }
 }

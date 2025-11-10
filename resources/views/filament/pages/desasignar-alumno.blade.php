@@ -8,6 +8,8 @@
 				<li><b>Alumno:</b> {{ $this->asignacionActual->alumno->nombre_completo ?? '-' }}</li>
 				<li><b>DNI:</b> {{ $this->asignacionActual->alumno->alu_vcDni ?? '-' }}</li>
 				<li><b>Código:</b> {{ $this->asignacionActual->alumno->alu_vcCodigo ?? '-' }}</li>
+				<li><b>Local:</b> {{ $this->asignacionActual->local?->localesMaestro?->locma_vcNombre ?? '—' }}</li>
+				<li><b>Cargo:</b> {{ $this->asignacionActual->experienciaAdmision?->maestro?->expadmma_vcNombre ?? '—' }}</li>
 				<li><b>Fecha:</b> {{ $this->asignacionActual->procesoFecha->profec_dFecha ?? '-' }}</li>
 				<li><b>Usuario Asignador:</b> {{ $this->asignacionActual->usuario->name ?? '-' }}</li>
 				<li><b>Fecha Asignación:</b> {{ $this->asignacionActual->proalu_dtFechaAsignacion ?? '-' }}</li>

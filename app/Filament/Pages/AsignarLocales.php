@@ -17,6 +17,8 @@ use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use App\Support\Traits\UsesGlobalContext;
+use App\Support\CurrentContext;
 use App\Models\LocalesMaestro;
 use App\Models\Proceso;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
@@ -29,6 +31,7 @@ class AsignarLocales extends Page implements HasForms, HasTable
     use InteractsWithForms;
     use InteractsWithTable;
     use HasPageShield;
+    use UsesGlobalContext;
     protected static ?string $navigationIcon = 'heroicon-o-building-office-2';
     protected static string $view = 'filament.pages.asignar-locales';
     protected static ?string $navigationLabel = 'Agregar Locales';
@@ -37,13 +40,28 @@ class AsignarLocales extends Page implements HasForms, HasTable
 
   
 
-   public ?array $data = [];
+    public ?array $data = [];
+
+    protected $listeners = ['context-changed' => 'onContextChanged'];
 
   
     public function mount(): void
     {
-        // Esto inicializa el formulario y su array 'data' con valores por defecto (vacíos).
-        $this->form->fill();
+        // Inicializar directamente desde el contexto global evitando sobreescrituras posteriores
+        $ctx = app(CurrentContext::class);
+        $ctx->ensureLoaded();
+        $ctx->ensureValid();
+        $this->form->fill([
+            'proceso_id' => $ctx->procesoId(),
+            'proceso_fecha_id' => $ctx->fechaId(),
+            'locales_maestro_ids' => [],
+        ]);
+    }
+
+    public function onContextChanged(): void
+    {
+        // Sincroniza desde el contexto global y limpia selección de locales a asignar
+        $this->applyContextFromGlobal(['proceso_id','proceso_fecha_id'], ['locales_maestro_ids'], 'Se aplicó el nuevo Proceso y Fecha.');
     }
 
     public function table(Table $table): Table
@@ -56,17 +74,23 @@ class AsignarLocales extends Page implements HasForms, HasTable
 
             // Verificamos si la clave existe y tiene un valor
             if (empty($data['proceso_fecha_id'])) {
-                // SI NO HAY FECHA SELECCIONADA:
-                // Devolvemos una consulta del modelo relacionado que a propósito no
-                // devolverá ningún resultado. Es una forma segura de mostrar una tabla vacía.
-                return LocalesMaestro::query()->whereRaw('1 = 0');
+                // Intentar usar el contexto global como respaldo
+                $ctx = app(CurrentContext::class);
+                $ctx->ensureLoaded();
+                $fechaIdFallback = $ctx->fechaId();
+                if (!$fechaIdFallback) {
+                    // Sin fecha: retornar tabla vacía de forma segura
+                    return LocalesMaestro::query()->whereRaw('1 = 0');
+                }
+                $fecha = ProcesoFecha::find($fechaIdFallback);
+                return $fecha ? $fecha->localesMaestro()->orderBy('localMaestro.locma_vcNombre','asc') : LocalesMaestro::query()->whereRaw('1 = 0');
             }
 
             // SI HAY UNA FECHA SELECCIONADA:
             // Buscamos la fecha y devolvemos la relación como antes.
             $fecha = ProcesoFecha::find($data['proceso_fecha_id']);
 
-            return $fecha->localesMaestro();
+            return $fecha->localesMaestro()->orderBy('localMaestro.locma_vcNombre','asc');
         })
         ->heading('Locales Ya Asignados')
         ->columns([
@@ -92,8 +116,10 @@ class AsignarLocales extends Page implements HasForms, HasTable
     {
         return $form
             ->schema([
-                Section::make('Seleccionar Proceso y Locales')
-                    ->description('Elige un proceso abierto, fecha activa y luego selecciona todos los locales que deseas asociar.')
+                // Placeholder de solo lectura mostrando la fecha actual global
+                $this->fechaActualPlaceholder('proceso_fecha_id'),
+                Section::make('')
+                   // ->description('Elige un proceso abierto, fecha activa y luego selecciona todos los locales que deseas asociar.')
                     ->schema([
                         Select::make('proceso_id')
                             ->label('Proceso Abierto')
@@ -101,7 +127,8 @@ class AsignarLocales extends Page implements HasForms, HasTable
                             ->searchable()
                             ->reactive()
                             ->afterStateUpdated(function(callable $set){ $set('proceso_fecha_id', null); })
-                            ->required(),
+                            ->required()
+                            ->hidden(),
                         Select::make('proceso_fecha_id')
                             ->label('Fecha Activa del Proceso')
                             ->options(function(callable $get){
@@ -114,7 +141,8 @@ class AsignarLocales extends Page implements HasForms, HasTable
                             })
                             ->searchable()
                             ->reactive()
-                            ->required(),
+                            ->required()
+                            ->hidden(),
 
                        CheckboxList::make('locales_maestro_ids')
                             ->label('Seleccione los Locales Disponibles a Asignar')
@@ -154,7 +182,7 @@ class AsignarLocales extends Page implements HasForms, HasTable
     public function save(): void
     {
         // Obtiene los datos validados del formulario
-        $data = $this->form->getState();
+    $data = $this->form->getState();
 
         // --- PASO DE VALIDACIÓN MANUAL ---
     // Verificamos si el array de locales está vacío o no existe.
@@ -169,8 +197,26 @@ class AsignarLocales extends Page implements HasForms, HasTable
             return; 
         }
 
-        // Busca el modelo ProcesoFecha seleccionado
-        $fecha = ProcesoFecha::find($data['proceso_fecha_id']);
+        // Busca el modelo ProcesoFecha seleccionado (protegido ante clave inexistente)
+        $fechaId = $data['proceso_fecha_id'] ?? null;
+        if (!$fechaId) {
+            // Reintentar desde el contexto global por si el formulario no cargó aún el estado
+            $ctx = app(CurrentContext::class);
+            $ctx->ensureLoaded();
+            $ctxFecha = $ctx->fechaId();
+            if ($ctxFecha) {
+                $fechaId = $ctxFecha;
+                // Sincronizar el formulario para próximas acciones
+                $this->form->fill([
+                    'proceso_id' => $ctx->procesoId(),
+                    'proceso_fecha_id' => $fechaId,
+                ]);
+            } else {
+                Notification::make()->title('Falta seleccionar fecha')->body('Seleccione una Fecha activa del proceso.')->warning()->send();
+                return;
+            }
+        }
+        $fecha = ProcesoFecha::find($fechaId);
         if (!$fecha) {
             Notification::make()->title('Error')->body('La fecha seleccionada no es válida.')->danger()->send();
             return;
@@ -189,7 +235,7 @@ class AsignarLocales extends Page implements HasForms, HasTable
         // Mantener proceso y fecha seleccionados; limpiar solo lista de locales seleccionados
         $this->form->fill([
             'proceso_id' => $data['proceso_id'] ?? null,
-            'proceso_fecha_id' => $data['proceso_fecha_id'] ?? null,
+            'proceso_fecha_id' => $fechaId,
             'locales_maestro_ids' => [],
         ]);
     }

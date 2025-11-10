@@ -88,8 +88,19 @@ class DocenteResource extends Resource
                         ->searchable(),
                     Forms\Components\Select::make('tipo_iCodigo')
                         ->label('Tipo')
-                        ->options(fn()=> \App\Models\Tipo::orderBy('tipo_vcNombre')->pluck('tipo_vcNombre','tipo_iCodigo'))
-                        ->searchable(),
+                        ->options(function(){
+                            $permitidos = config('docentes.tipos_permitidos_creacion');
+                            return \App\Models\Tipo::whereIn('tipo_iCodigo',$permitidos)
+                                ->orderBy('tipo_vcNombre')
+                                ->pluck('tipo_vcNombre','tipo_iCodigo');
+                        })
+                        ->default(fn()=> config('docentes.tipo_default_creacion'))
+                        ->required()
+                        ->searchable()
+                        ->validationMessages([
+                            'required' => 'El campo Tipo de Docente es obligatorio.',
+                        ]),
+                        
                     Forms\Components\DatePicker::make('doc_dNacimiento')
                         ->label('Fecha Nacimiento')
                         ->native(false),

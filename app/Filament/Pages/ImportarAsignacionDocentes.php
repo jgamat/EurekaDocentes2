@@ -11,6 +11,7 @@ use Maatwebsite\Excel\Facades\Excel;
 use App\Exports\PlantillaAsignacionDocentesExport;
 use App\Exports\ErroresAsignacionDocentesExport;
 use App\Filament\Pages\Concerns\WithAssignmentFileHandling;
+use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 // (Se removió la tabla de Filament para la vista previa temporal)
 
 class ImportarAsignacionDocentes extends Page implements Forms\Contracts\HasForms
@@ -18,6 +19,7 @@ class ImportarAsignacionDocentes extends Page implements Forms\Contracts\HasForm
     use Forms\Concerns\InteractsWithForms;
     use WithFileUploads;
     use WithAssignmentFileHandling;
+       use HasPageShield; 
     // Se elimina InteractsWithTable; vista previa vuelve a tabla manual.
 
     protected static ?string $navigationIcon = 'heroicon-o-cloud-arrow-up';

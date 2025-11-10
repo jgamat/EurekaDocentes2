@@ -90,7 +90,7 @@ class PlanillaPrintController extends Controller
             // NUEVA LÓGICA: páginas por local (lista global), permitiendo múltiples cargos en la misma página.
             // Se usa numeración global continua.
             $ordenGlobal = 1;
-            $rowChunks = $rows->chunk(13); // mismo tamaño que docentes
+            $rowChunks = $rows->chunk(15); // mismo tamaño que docentes
             foreach ($rowChunks as $chunk) {
                 $pages[] = [
                     'type' => 'detail',
@@ -125,7 +125,7 @@ class PlanillaPrintController extends Controller
             // LÓGICA EXISTENTE: páginas por cargo
             foreach ($groups as $cargoNombre => $items) {
                 $montoCargo = isset($items[0]) ? (float) ($items[0]->monto ?? 0) : 0;
-                $chunks = collect($items)->chunk(13);
+                $chunks = collect($items)->chunk(15);
                 $ordenDentroCargo = 1; // reinicia numeración por cargo
                 foreach ($chunks as $chunk) {
                     $pages[] = [
@@ -166,6 +166,9 @@ class PlanillaPrintController extends Controller
                 $resumen[] = [
                     'cargo_nombre' => $cargoNombre,
                     'cantidad' => $cantidad,
+                    // Placeholder: si más adelante hay conteo real, reemplazar estos campos
+                    'asistentes' => null,
+                    'inasistentes' => null,
                     'monto' => $monto,
                     'subtotal' => $subtotal,
                 ];

@@ -73,8 +73,22 @@ class AdministrativoResource extends Resource
                         ->searchable(),
                     Forms\Components\Select::make('tipo_iCodigo')
                         ->label('Tipo')
-                        ->options(fn()=>Tipo::orderBy('tipo_vcNombre')->pluck('tipo_vcNombre','tipo_iCodigo'))
-                        ->searchable(),
+                        ->options(function(){
+                            $permitidos = config('administrativos.tipos_permitidos_creacion');
+                            return Tipo::whereIn('tipo_iCodigo',$permitidos)
+                                ->orderBy('tipo_vcNombre')
+                                ->pluck('tipo_vcNombre','tipo_iCodigo');
+                        })
+                        ->searchable()
+                        ->required()
+                        ->validationMessages([
+                            'required' => 'El campo Tipo de Administrativo es obligatorio.',
+                        ])
+                        ->helperText(function(){
+                           
+                           
+                            return 'Seleccione correctamente el tipo de administrativo para evitar errores con la planilla.';
+                        }),
                     Forms\Components\TextInput::make('adm_vcCelular')
                         ->label('Celular')
                         ->maxLength(30),
@@ -136,7 +150,14 @@ class AdministrativoResource extends Resource
                             Forms\Components\Select::make('cat_iCodigo')->label('Categoría')->options(fn()=>Categoria::orderBy('cat_vcNombre')->pluck('cat_vcNombre','cat_iCodigo'))->searchable(),
                             Forms\Components\Select::make('con_iCodigo')->label('Condición')->options(fn()=>Condicion::orderBy('con_vcNombre')->pluck('con_vcNombre','con_iCodigo'))->searchable(),
                             Forms\Components\Select::make('est_iCodigo')->label('Estado')->options(fn()=>Estado::orderBy('est_vcNombre')->pluck('est_vcNombre','est_iCodigo'))->searchable(),
-                            Forms\Components\Select::make('tipo_iCodigo')->label('Tipo')->options(fn()=>Tipo::orderBy('tipo_vcNombre')->pluck('tipo_vcNombre','tipo_iCodigo'))->searchable(),
+                            Forms\Components\Select::make('tipo_iCodigo')
+                                ->label('Tipo')
+                                ->options(fn()=>Tipo::orderBy('tipo_vcNombre')->pluck('tipo_vcNombre','tipo_iCodigo'))
+                                ->searchable()
+                                ->required()
+                                ->validationMessages([
+                                    'required' => 'El campo Tipo de Administrativo es obligatorio.',
+                                ]),
                             Forms\Components\DatePicker::make('adm_dNacimiento')->label('Nacimiento')->native(false),
                             Forms\Components\TextInput::make('adm_vcCelular')->label('Celular')->maxLength(30),
                             Forms\Components\TextInput::make('adm_vcTelefono')->label('Teléfono')->maxLength(30),

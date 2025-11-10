@@ -24,6 +24,9 @@ class ReporteConsolidadoPlanillas extends Page implements HasForms
     use HasPageShield; 
 
     protected static ?string $navigationIcon = 'heroicon-o-document-text';
+    protected static ?string $navigationGroup = 'Planillas';
+    
+
     protected static string $view = 'filament.pages.reporte-consolidado-planillas';
 
     public ?int $proceso_id = null; 

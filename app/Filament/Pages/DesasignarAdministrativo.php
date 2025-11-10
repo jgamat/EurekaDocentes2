@@ -4,6 +4,9 @@ namespace App\Filament\Pages;
 
 use App\Models\Proceso;
 use App\Models\ProcesoFecha;
+use App\Support\CurrentContext;
+use App\Support\Traits\UsesGlobalContext;
+use Livewire\Attributes\On;
 use App\Models\Administrativo;
 use App\Models\ProcesoAdministrativo;
 use App\Models\LocalCargo;
@@ -21,6 +24,7 @@ class DesasignarAdministrativo extends Page implements HasForms
 {
     use InteractsWithForms;
     use HasPageShield;
+    use UsesGlobalContext;
 
     protected static ?string $navigationIcon = 'heroicon-o-user-minus';
     protected static string $view = 'filament.pages.desasignar-administrativo';
@@ -28,41 +32,56 @@ class DesasignarAdministrativo extends Page implements HasForms
     protected static ?string $navigationGroup = 'Administrativos';
 
     public ?array $data = [];
+    // Mantener la asignación encontrada explícitamente para que Blade la muestre sin depender de property virtual
+    public ?ProcesoAdministrativo $asignacionActual = null;
 
     public function mount(): void
     {
-        $this->form->fill();
+        $this->fillContextDefaults(['proceso_id','proceso_fecha_id']);
+        // Hidratar explícitamente los campos ocultos para que el placeholder de fecha funcione.
+        $ctx = app(CurrentContext::class);
+        $this->form?->fill([
+            'proceso_id' => $ctx->procesoId(),
+            'proceso_fecha_id' => $ctx->fechaId(),
+        ]);
     }
 
-    public function getAsignacionActualProperty()
+    #[On('context-changed')]
+    public function onContextChanged(): void
     {
-        $data = $this->form->getState();
-        $dni = $data['administrativo_dni'] ?? null;
-        $fechaId = $data['proceso_fecha_id'] ?? null;
-
-        if ($dni && $fechaId) {
-            return ProcesoAdministrativo::where('adm_vcDni', $dni)
-                ->where('profec_iCodigo', $fechaId)
-                ->where('proadm_iAsignacion', true)
-                ->first();
-        }
-        return null;
+        $this->applyContextFromGlobal(['proceso_id','proceso_fecha_id'], ['administrativo_dni'], 'Se aplicó la Fecha y Proceso globales y se reinició la búsqueda de administrativo.');
     }
+
+    protected function ensureContextIntegrity(): void
+    {
+        $state = $this->form?->getState() ?? [];
+        $ctx = app(CurrentContext::class);
+        $payload = [];
+        if (empty($state['proceso_id'])) { $payload['proceso_id'] = $ctx->procesoId(); }
+        if (empty($state['proceso_fecha_id'])) { $payload['proceso_fecha_id'] = $ctx->fechaId(); }
+        if (!empty($payload)) { $this->form?->fill($payload); }
+    }
+
 
     public function form(Form $form): Form
     {
         return $form
             ->schema([
+                // 0. Fecha global solo lectura
+                $this->fechaActualPlaceholder('proceso_fecha_id'),
+                // 1. Proceso global oculto
                 Select::make('proceso_id')
                     ->label('1. Seleccione el Proceso Abierto')
                     ->options(Proceso::where('pro_iAbierto', true)->pluck('pro_vcNombre', 'pro_iCodigo'))
                     ->required()
                     ->reactive()
+                    ->hidden()
+                    ->dehydrated(true)
                     ->afterStateUpdated(function ($state, callable $set, $livewire) {
                         $set('administrativo_dni', null);
                         $livewire->resetValidation();
                     }),
-
+                // 2. Fecha global oculta
                 Select::make('proceso_fecha_id')
                     ->label('2. Seleccione la Fecha Activa')
                     ->options(function (callable $get): Collection {
@@ -74,6 +93,8 @@ class DesasignarAdministrativo extends Page implements HasForms
                     })
                     ->required(fn (callable $get) => filled($get('proceso_id')))
                     ->reactive()
+                    ->hidden()
+                    ->dehydrated(true)
                     ->afterStateUpdated(function ($state, callable $set, $livewire) {
                         $set('administrativo_dni', null);
                         $livewire->resetValidation();
@@ -82,6 +103,8 @@ class DesasignarAdministrativo extends Page implements HasForms
                 Select::make('administrativo_dni')
                     ->label('Buscar Administrativo')
                     ->searchable()
+                    ->placeholder('Escribe nombre, DNI o código (min 2 caracteres)')
+                    ->helperText('Debe existir una asignación activa en la fecha global para mostrar detalles.')
                     ->getSearchResultsUsing(function (string $search) {
                         if (strlen($search) < 2) return [];
                         return Administrativo::query()
@@ -105,15 +128,24 @@ class DesasignarAdministrativo extends Page implements HasForms
                         // Si hay fecha seleccionada y se eligió un administrativo, valida si existe asignación
                         $fechaId = $get('proceso_fecha_id');
                         if ($fechaId && $state) {
-                            $asignacion = ProcesoAdministrativo::where('adm_vcDni', $state)
+                            $asignacion = ProcesoAdministrativo::with(['administrativo','local.localesMaestro','experienciaAdmision.maestro'])
+                                ->where('adm_vcDni', $state)
                                 ->where('profec_iCodigo', $fechaId)
-                                ->where('proadm_iAsignacion', true)
+                                ->where('proadm_iAsignacion', 1)
                                 ->first();
                             if (!$asignacion) {
+                                $this->asignacionActual = null;
                                 Notification::make()
                                     ->title('No asignado')
                                     ->body('El administrativo no está asignado en esta fecha.')
                                     ->danger()
+                                    ->send();
+                            } else {
+                                $this->asignacionActual = $asignacion;
+                                Notification::make()
+                                    ->title('Asignación encontrada')
+                                    ->body('Puede proceder a desasignar: '.$asignacion->administrativo->adm_vcNombres)
+                                    ->success()
                                     ->send();
                             }
                         }

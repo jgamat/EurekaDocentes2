@@ -165,24 +165,25 @@ class DocenteAssignmentImportService
                 $dto->errors[] = 'Cargo vacío';
             }
 
-            // Local (maestro + instancia) refinado
+            // Local (maestro + instancia) refinado: NO se asigna locma_iCodigo a localId.
+            // Se almacena localMaestroId y sólo se define localId si existe instancia para esa fecha.
             if ($dto->localNombre) {
                 $locKey = $normLocal($dto->localNombre);
                 $localMaestro = $localMaestroMatch[$locKey] ?? null;
                 if (!$localMaestro) {
                     $dto->errors[] = 'Local no existe en LocalesMaestro';
                 } else {
+                    $dto->localMaestroId = $localMaestro->locma_iCodigo;
                     if ($dto->procesoFechaId) {
                         $idx = $localMaestro->locma_iCodigo.'|'.$dto->procesoFechaId;
                         if (isset($instanciaIndex[$idx])) {
-                            $dto->localId = $instanciaIndex[$idx];
+                            $dto->localId = $instanciaIndex[$idx]; // instancia ya existente
                         } else {
                             $dto->warnings[] = 'Instancia local para fecha será creada';
-                            $dto->localId = $localMaestro->locma_iCodigo; // temporal retención maestro
+                            // localId permanece null; se creará en import()
                         }
                     } else {
                         $dto->warnings[] = 'Local pendiente de fecha';
-                        $dto->localId = $localMaestro->locma_iCodigo;
                     }
                 }
             } else {
@@ -248,27 +249,33 @@ class DocenteAssignmentImportService
                 // Guard clause: si no hay procesoFechaId no continuamos (no se puede crear contexto)
                 if (!$dto->procesoFechaId) { $skipped++; continue; }
 
-                // Asegurar maestro + instancia locales:
-                // Casos:
-                //  - localId vacío pero tenemos nombre => crear maestro + instancia
-                //  - localId es realmente un locma_iCodigo (no existe en locales) => crear/obtener instancia
+                // Asegurar maestro + instancia locales (localId debe ser instancia real loc_iCodigo)
                 if ($dto->localNombre) {
                     if (!$dto->localId) {
-                        // No se resolvió en parse: crear maestro + instancia
-                        $maestro = LocalesMaestro::firstOrCreate(['locma_vcNombre' => $dto->localNombre]);
+                        // Si no había instancia existente, crear maestro (si falta) e instancia ahora
+                        $maestro = $dto->localMaestroId
+                            ? LocalesMaestro::firstOrCreate(['locma_iCodigo' => $dto->localMaestroId], ['locma_vcNombre' => $dto->localNombre])
+                            : LocalesMaestro::firstOrCreate(['locma_vcNombre' => $dto->localNombre]);
                         $inst = Locales::firstOrCreate([
                             'locma_iCodigo' => $maestro->locma_iCodigo,
                             'profec_iCodigo' => $dto->procesoFechaId,
                         ]);
                         $dto->localId = $inst->loc_iCodigo;
-                    } elseif (!Locales::where('loc_iCodigo', $dto->localId)->exists()) {
-                        // Es un maestro ID: convertir a instancia
-                        $maestroId = $dto->localId;
-                        $inst = Locales::firstOrCreate([
-                            'locma_iCodigo' => $maestroId,
-                            'profec_iCodigo' => $dto->procesoFechaId,
-                        ]);
-                        $dto->localId = $inst->loc_iCodigo;
+                    } else {
+                        // Validar que localId realmente existe como instancia; si no, recrear
+                        if (!Locales::where('loc_iCodigo', $dto->localId)->exists()) {
+                            $maestroId = $dto->localMaestroId ?? null;
+                            if (!$maestroId) {
+                                // fallback: buscar maestro por nombre
+                                $maestro = LocalesMaestro::firstOrCreate(['locma_vcNombre' => $dto->localNombre]);
+                                $maestroId = $maestro->locma_iCodigo;
+                            }
+                            $inst = Locales::firstOrCreate([
+                                'locma_iCodigo' => $maestroId,
+                                'profec_iCodigo' => $dto->procesoFechaId,
+                            ]);
+                            $dto->localId = $inst->loc_iCodigo;
+                        }
                     }
                 }
 
@@ -310,6 +317,9 @@ class DocenteAssignmentImportService
                     }
                 }
 
+                    $ip = request()->header('X-Forwarded-For') ? explode(',', request()->header('X-Forwarded-For'))[0] : request()->ip();
+
+
                 // Reactivación: si existe registro inactivo (prodoc_iAsignacion=0) se actualiza en vez de crear
                 $pending = ProcesoDocente::where('profec_iCodigo', $dto->procesoFechaId)
                     ->where('doc_vcCodigo', $dto->codigo)
@@ -321,8 +331,10 @@ class DocenteAssignmentImportService
                     $pending->loc_iCodigo = $dto->localId;
                     $pending->prodoc_iAsignacion = 1;
                     $pending->prodoc_dtFechaAsignacion = now();
+                    $pending->prodoc_vcIpAsignacion = $ip;
                     
                     $pending->user_id = auth()->id();
+
                     $pending->save();
                     $imported++;
                 } else {
@@ -334,6 +346,7 @@ class DocenteAssignmentImportService
                         'prodoc_iAsignacion' => 1,
                         'prodoc_dtFechaAsignacion' => now(),
                         'user_id' => auth()->id(),
+                        'prodoc_vcIpAsignacion'=> $ip
                     ]);
                     $imported++;
                 }

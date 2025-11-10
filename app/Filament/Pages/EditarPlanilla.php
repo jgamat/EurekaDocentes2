@@ -21,11 +21,14 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Support\Str;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
+use App\Support\CurrentContext;
+use App\Support\Traits\UsesGlobalContext;
 
 class EditarPlanilla extends Page implements Forms\Contracts\HasForms, HasTable
 {
     use Forms\Concerns\InteractsWithForms, Tables\Concerns\InteractsWithTable;
     use HasPageShield;
+    use UsesGlobalContext;
 
     protected static ?string $navigationIcon = 'heroicon-o-document-text';
     protected static ?string $navigationGroup = 'Planillas';
@@ -40,17 +43,27 @@ class EditarPlanilla extends Page implements Forms\Contracts\HasForms, HasTable
         'planilla_id' => null,
     ];
 
+    // Sincronizar con contexto global
+    protected $listeners = ['context-changed' => 'onGlobalContextChanged'];
+
     public function mount(): void
     {
-        // Prefill proceso/fecha activos si existen
-        $abierto = Proceso::where('pro_iAbierto', true)->first();
-        if ($abierto) {
-            $this->filters['proceso_id'] = $abierto->pro_iCodigo;
-            $activa = $abierto->procesoFecha()->where('profec_iActivo', true)->first();
-            if ($activa) {
-                $this->filters['proceso_fecha_id'] = $activa->profec_iCodigo;
-            }
-        }
+        $ctx = app(CurrentContext::class);
+        $ctx->ensureLoaded();
+        $ctx->ensureValid();
+        $this->filters['proceso_id'] = $ctx->procesoId();
+        $this->filters['proceso_fecha_id'] = $ctx->fechaId();
+        $this->form->fill($this->filters);
+    }
+
+    public function onGlobalContextChanged(): void
+    {
+        $ctx = app(CurrentContext::class);
+        $this->filters['proceso_id'] = $ctx->procesoId();
+        $this->filters['proceso_fecha_id'] = $ctx->fechaId();
+        // Al cambiar el contexto, reiniciar selección de tipo/planilla
+        $this->filters['tipo_id'] = null;
+        $this->filters['planilla_id'] = null;
         $this->form->fill($this->filters);
     }
 
@@ -58,17 +71,12 @@ class EditarPlanilla extends Page implements Forms\Contracts\HasForms, HasTable
     {
         return $form
             ->schema([
+                // Mostrar fecha actual como solo lectura; proceso/fecha vendrán del contexto global
+                $this->fechaActualPlaceholder('filters.proceso_fecha_id'),
                 Select::make('proceso_id')
                     ->label('Proceso activo')
                     ->options(fn () => Proceso::where('pro_iAbierto', true)->orderBy('pro_vcNombre')->pluck('pro_vcNombre', 'pro_iCodigo'))
-                    ->reactive()
-                    ->afterStateUpdated(function ($state) {
-                        $this->filters['proceso_id'] = $state;
-                        $this->filters['proceso_fecha_id'] = null;
-                        $this->filters['tipo_id'] = null;
-                        $this->filters['planilla_id'] = null;
-                        $this->form->fill($this->filters);
-                    })
+                    ->hidden()
                     ->required(),
                 Select::make('proceso_fecha_id')
                     ->label('Fecha abierta')
@@ -80,13 +88,7 @@ class EditarPlanilla extends Page implements Forms\Contracts\HasForms, HasTable
                             ->orderBy('profec_dFecha')
                             ->pluck('profec_dFecha', 'profec_iCodigo');
                     })
-                    ->reactive()
-                    ->afterStateUpdated(function ($state) {
-                        $this->filters['proceso_fecha_id'] = $state;
-                        $this->filters['tipo_id'] = null;
-                        $this->filters['planilla_id'] = null;
-                        $this->form->fill($this->filters);
-                    })
+                    ->hidden()
                     ->required(),
                 Select::make('tipo_id')
                     ->label('Tipo de planilla')
@@ -314,7 +316,7 @@ class EditarPlanilla extends Page implements Forms\Contracts\HasForms, HasTable
 
             $pageNo = (int) $pla->pla_iPaginaInicio;
             $pages = [];
-            $chunks = $rows->chunk(13);
+            $chunks = $rows->chunk(15);
             foreach ($chunks as $chunk) {
                 $pages[] = [
                     'type' => 'detail',

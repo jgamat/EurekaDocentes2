@@ -23,9 +23,22 @@ class ConsolidadoDocentesSheet extends BaseConsolidadoSheet
             ->with(['docente.tipo','experienciaAdmision.maestro','local.localesMaestro','procesoFecha'])
             // Join a la tabla docente para poder ordenar por sus apellidos/nombres
             ->leftJoin('docente', 'docente.doc_vcCodigo', '=', 'procesodocente.doc_vcCodigo')
-            ->leftJoin('planillaDocente as pld', 'pld.doc_vcCodigo', '=', 'procesodocente.doc_vcCodigo')
+            // Ajuste: profec_iCodigo pertenece a planilla, no a planillaDocente; filtramos sólo en la tabla planilla
+                        ->leftJoin('planillaDocente as pld', function($j){
+                                $j->on('pld.doc_vcCodigo','=','procesodocente.doc_vcCodigo')
+                                    // Limitar sólo a pivotes cuya planilla pertenezca a la fecha seleccionada para evitar duplicados multi-fecha
+                                    ->whereExists(function($q){
+                                            $q->selectRaw(1)
+                                                ->from('planilla as plx')
+                                                ->whereColumn('plx.pla_id','pld.pla_id')
+                                                ->where('plx.pla_bActivo',1)
+                                                ->where('plx.profec_iCodigo',$this->procesoFechaId);
+                                    });
+                        })
             ->leftJoin('planilla as pl', function($j){
-                $j->on('pl.pla_id','=','pld.pla_id');
+                $j->on('pl.pla_id','=','pld.pla_id')
+                  ->where('pl.pla_bActivo',1)
+                  ->where('pl.profec_iCodigo','=',$this->procesoFechaId);
             })
             ->where('procesodocente.profec_iCodigo', $this->procesoFechaId)
             ->where('procesodocente.prodoc_iAsignacion', 1)
@@ -34,8 +47,7 @@ class ConsolidadoDocentesSheet extends BaseConsolidadoSheet
             ->orderBy('docente.doc_vcPaterno')
             ->orderBy('docente.doc_vcMaterno')
             ->orderBy('docente.doc_vcNombre');
-        // Filtrar activo dinámicamente
-                $query->where('pl.pla_bActivo',1);
+    // (activo y fecha ya filtrados dentro del join)
 
         $rows = $query->get();
         $out=[];

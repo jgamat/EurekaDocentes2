@@ -9,6 +9,10 @@ use App\Models\ExperienciaAdmision;
 use App\Models\ExperienciaAdmisionMaestro;
 use App\Models\ProcesoDocente;
 use App\Models\ProcesoFecha;
+use App\Support\CurrentContext;
+use App\Support\Traits\UsesGlobalContext;
+use Carbon\Carbon;
+use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -27,6 +31,7 @@ class AsignarDocentes extends Page implements HasForms
 {
     use InteractsWithForms;
     use HasPageShield;   
+    use UsesGlobalContext;
     protected static ?string $navigationIcon = 'heroicon-o-user-plus';
     protected static string $view = 'filament.pages.asignar-docentes';
     protected static ?string $navigationLabel = 'Asignar Docentes';
@@ -41,31 +46,68 @@ class AsignarDocentes extends Page implements HasForms
             ->where('expadm_iCodigo', $experienciaAdmisionId)
             ->first();
     }
-    public function mount(): void { $this->form->fill(); }
+    public function mount(): void {
+        // Inicializar usando el contexto global
+        $this->fillContextDefaults(['proceso_fecha_id']);
+        // Rehidratar inmediatamente la fecha oculta desde CurrentContext
+        $ctx = app(CurrentContext::class);
+        $this->form?->fill(['proceso_fecha_id' => $ctx->fechaId()]);
+    }
+
+    #[On('context-changed')]
+    public function onContextChanged(): void
+    {
+        $ctx = app(CurrentContext::class);
+        $nuevaFecha = $ctx->fechaId();
+        $this->form->fill([
+            'proceso_fecha_id' => $nuevaFecha,
+            'local_id' => null,
+            'experiencia_admision_id' => null,
+            'docente_id' => null,
+        ]);
+        $this->plazaSeleccionada = null;
+        $this->dispatch(
+            'contextoActualizado',
+            procesoFechaId: $nuevaFecha,
+            localId: null,
+            experienciaAdmisionId: null
+        );
+        Notification::make()
+            ->title('Contexto actualizado')
+            ->body('Se aplicó la Fecha global y se reiniciaron los campos dependientes.')
+            ->info()
+            ->send();
+    }
     
 
     public function form(Form $form): Form
     {
         return $form
             ->schema([
-                // SELECT 1: FECHA DEL PROCESO
+                // 0. Mostrar la fecha del proceso (global) en solo lectura
+                $this->fechaActualPlaceholder('proceso_fecha_id'),
+                // 1. Fecha del Proceso (global, oculta)
                 Select::make('proceso_fecha_id')
-                    ->label('1. Seleccione la Fecha del Proceso')
+                    ->label('Fecha del Proceso (global)')
                     ->options(ProcesoFecha::where('profec_iActivo', true)->pluck('profec_dFecha', 'profec_iCodigo'))
-                    ->searchable()
                     ->required()
                     ->reactive()
+                    ->hidden()
+                    ->dehydrated(true)
+                    ->default(fn()=> app(CurrentContext::class)->fechaId())
                     ->afterStateUpdated(function ($state, callable $get, callable $set) {
-                        // Al cambiar la fecha, reiniciar Local y Cargo y limpiar la plaza
                         $set('local_id', null);
                         $set('experiencia_admision_id', null);
                         $this->plazaSeleccionada = null;
-                        // Notificar a la tabla para que se vacíe
                         $this->dispatch('contextoActualizado',
                             procesoFechaId: $state,
                             localId: null,
                             experienciaAdmisionId: null
                         );
+                        Notification::make()
+                            ->title('Se reinició Local y Cargo por cambio de Fecha')
+                            ->info()
+                            ->send();
                     }),
 
                 Select::make('local_id')
@@ -176,6 +218,8 @@ class AsignarDocentes extends Page implements HasForms
                         ->label('Buscar y Asignar Docente')
                         ->searchable()
                         ->placeholder('Escribe nombre, DNI o código')
+                        ->helperText('Primero seleccione Local y Cargo; luego elija el docente para asignar.')
+                        ->disabled(fn(callable $get) => empty($get('local_id')) || empty($get('experiencia_admision_id')))
                         ->getSearchResultsUsing(function (string $search): array {
                             if (strlen($search) < 2) return [];
                             return Docente::query()
@@ -212,6 +256,15 @@ class AsignarDocentes extends Page implements HasForms
     public function asignarDocenteDirecto(): void
 {
     $data = $this->form->getState();
+    // Reforzar integridad del contexto: fallback desde CurrentContext si falta la fecha
+    $ctx = app(CurrentContext::class);
+    $fechaId = $data['proceso_fecha_id'] ?? $ctx->fechaId();
+    if (!isset($data['proceso_fecha_id'])) {
+        // Evitar disparar afterStateUpdated del select de fecha (que limpia Local/Cargo)
+        // actualizando directamente el estado base del formulario.
+        $this->data['proceso_fecha_id'] = $fechaId;
+        $data['proceso_fecha_id'] = $fechaId;
+    }
     $codigo = $data['docente_id'] ?? null;
     $docente = $codigo ? Docente::where('doc_vcCodigo', $codigo)->first() : null;
     if (!$docente) {
@@ -230,7 +283,7 @@ class AsignarDocentes extends Page implements HasForms
 
     // Validaciones
     if (
-        empty($newState['proceso_fecha_id']) ||
+        empty($fechaId) ||
         empty($newState['local_id']) ||
         empty($newState['experiencia_admision_id']) ||
         empty($docente->doc_vcCodigo)
@@ -258,7 +311,7 @@ class AsignarDocentes extends Page implements HasForms
     }
 
     // Validación: el docente no debe tener ya una asignación activa (prodoc_iAsignacion=1) en esta fecha (sin importar local/cargo)
-    $asignacionActivaMismaFecha = ProcesoDocente::where('profec_iCodigo', $newState['proceso_fecha_id'])
+    $asignacionActivaMismaFecha = ProcesoDocente::where('profec_iCodigo', $fechaId)
         ->where('doc_vcCodigo', $docente->doc_vcCodigo)
         ->where('prodoc_iAsignacion', 1)
         ->first();
@@ -285,13 +338,13 @@ class AsignarDocentes extends Page implements HasForms
     }
 
     // Buscar si existe un registro previo (inactivo) de este docente en la misma fecha para reactivarlo
-    $asignacionPendiente = ProcesoDocente::where('profec_iCodigo', $newState['proceso_fecha_id'])
+    $asignacionPendiente = ProcesoDocente::where('profec_iCodigo', $fechaId)
         ->where('doc_vcCodigo', $docente->doc_vcCodigo)
         ->where('prodoc_iAsignacion', 0)
         ->latest('prodoc_id')
         ->first();
 
-    DB::transaction(function () use ($plaza, $docente, $newState, $asignacionPendiente) {
+    DB::transaction(function () use ($plaza, $docente, $newState, $asignacionPendiente, $fechaId) {
     $ip = request()->header('X-Forwarded-For') ? explode(',', request()->header('X-Forwarded-For'))[0] : request()->ip();
         if ($asignacionPendiente) {
             // Actualizar el registro existente
@@ -306,7 +359,7 @@ class AsignarDocentes extends Page implements HasForms
         } else {
             // Inserción normal
             ProcesoDocente::create([
-                'profec_iCodigo' => $newState['proceso_fecha_id'],
+                'profec_iCodigo' => $fechaId,
                 'loc_iCodigo' => $plaza->loc_iCodigo,
                 'expadm_iCodigo' => $plaza->expadm_iCodigo,
                 'doc_vcCodigo' => $docente->doc_vcCodigo,
@@ -328,15 +381,13 @@ class AsignarDocentes extends Page implements HasForms
     $this->plazaSeleccionada = $plaza->refresh();
     $this->dispatch(
         'contextoActualizado',
-        procesoFechaId: $newState['proceso_fecha_id'],
+        procesoFechaId: $fechaId,
         localId: $plaza->loc_iCodigo,
         experienciaAdmisionId: $plaza->expadm_iCodigo
     );
 
+    // Mantener Local y Cargo seleccionados; solo limpiar el campo de búsqueda de docente.
     $this->form->fill([
-        'proceso_fecha_id' => $newState['proceso_fecha_id'],
-        'local_id' => $plaza->loc_iCodigo,
-        'experiencia_admision_id' => $plaza->expadm_iCodigo,
         'docente_id' => null,
     ]);
 }

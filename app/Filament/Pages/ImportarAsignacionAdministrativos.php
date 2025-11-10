@@ -11,12 +11,14 @@ use App\Exports\PlantillaAsignacionAdministrativosExport;
 use App\Exports\ErroresAsignacionAdministrativosExport;
 use App\Services\Import\AdministrativoAssignmentImportService;
 use App\Filament\Pages\Concerns\WithAssignmentFileHandling;
+use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 
 class ImportarAsignacionAdministrativos extends Page implements Forms\Contracts\HasForms
 {
     use Forms\Concerns\InteractsWithForms;
     use WithFileUploads;
     use WithAssignmentFileHandling;
+       use HasPageShield; 
 
     protected static ?string $navigationIcon = 'heroicon-o-document-text';
     protected static ?string $navigationGroup = 'Asignaciones';

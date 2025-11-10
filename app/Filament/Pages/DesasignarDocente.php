@@ -5,6 +5,9 @@ namespace App\Filament\Pages;
 
 use App\Models\Proceso;
 use App\Models\ProcesoFecha;
+use App\Support\CurrentContext;
+use App\Support\Traits\UsesGlobalContext;
+use Livewire\Attributes\On;
 use App\Models\Docente;
 use App\Models\ProcesoDocente;
 use App\Models\LocalCargo;
@@ -22,6 +25,7 @@ class DesasignarDocente extends Page implements HasForms
 {
     use InteractsWithForms;
     use HasPageShield;
+    use UsesGlobalContext;
 
     protected static ?string $navigationIcon = 'heroicon-o-user-minus';
     protected static string $view = 'filament.pages.desasignar-docente';
@@ -29,41 +33,67 @@ class DesasignarDocente extends Page implements HasForms
     protected static ?string $navigationGroup = 'Docentes';
 
     public ?array $data = [];
+    // Asignación seleccionada persistente (evita depender de propiedad computada efímera)
+    public ?ProcesoDocente $asignacionActual = null;
     
     public function mount(): void
     {
-        $this->form->fill();
+        $this->fillContextDefaults(['proceso_id','proceso_fecha_id']);
     }
 
-    public function getAsignacionActualProperty()
+    #[On('context-changed')]
+    public function onContextChanged(): void
+    {
+        $this->applyContextFromGlobal(['proceso_id','proceso_fecha_id'], ['docente_id'], 'Se aplicó la Fecha y Proceso globales y se reinició la búsqueda de docente.');
+    }
+
+    protected function refrescarAsignacionActual(): void
     {
         $data = $this->form->getState();
         $docenteCodigo = $data['docente_id'] ?? null;
         $fechaId = $data['proceso_fecha_id'] ?? null;
-
+        // Fallback: si la fecha no está en el estado del formulario, usar la fecha global y reinyectarla
+        if (!$fechaId) {
+            $ctx = app(CurrentContext::class);
+            $fechaId = $ctx->fechaId();
+            if ($fechaId) {
+                // Evitar disparar callbacks que limpian búsqueda: actualizar directamente el array de estado
+                $this->data['proceso_fecha_id'] = $fechaId;
+            }
+        }
         if ($docenteCodigo && $fechaId) {
-            return ProcesoDocente::where('doc_vcCodigo', $docenteCodigo)
+            $this->asignacionActual = ProcesoDocente::with([
+                'local.localesMaestro',
+                'experienciaAdmision.maestro',
+                'procesoFecha'
+            ])
+                ->where('doc_vcCodigo', $docenteCodigo)
                 ->where('profec_iCodigo', $fechaId)
                 ->where('prodoc_iAsignacion', true)
                 ->first();
+        } else {
+            $this->asignacionActual = null;
         }
-        return null;
     }
 
     public function form(Form $form): Form
     {
         return $form
             ->schema([
+                // 0. Fecha global solo lectura
+                $this->fechaActualPlaceholder('proceso_fecha_id'),
+                // 1. Proceso global oculto
                 Select::make('proceso_id')
                     ->label('1. Seleccione el Proceso Abierto')
                     ->options(Proceso::where('pro_iAbierto', true)->pluck('pro_vcNombre', 'pro_iCodigo'))
                     ->required()
                     ->reactive()
+                    ->hidden()
                     ->afterStateUpdated(function ($state, callable $set, $livewire) {
                         $set('docente_id', null);
                         $livewire->resetValidation();
                     }),
-
+                // 2. Fecha global oculta
                 Select::make('proceso_fecha_id')
                     ->label('2. Seleccione la Fecha Activa')
                     ->options(function (callable $get): Collection {
@@ -75,9 +105,13 @@ class DesasignarDocente extends Page implements HasForms
                     })
                     ->required(fn (callable $get) => filled($get('proceso_id')))
                     ->reactive()
+                    ->hidden()
+                    ->dehydrated(true)
+                    ->default(fn()=> app(CurrentContext::class)->fechaId())
                     ->afterStateUpdated(function ($state, callable $set, $livewire) {
                         $set('docente_id', null);
                         $livewire->resetValidation();
+                        $this->asignacionActual = null;
                     }),
 
                 Select::make('docente_id')
@@ -106,15 +140,20 @@ class DesasignarDocente extends Page implements HasForms
                         $livewire->resetValidation();
                         $fechaId = $get('proceso_fecha_id');
                         if ($fechaId && $state) {
-                            $asignacion = ProcesoDocente::where('doc_vcCodigo', $state)
-                                ->where('profec_iCodigo', $fechaId)
-                                ->where('prodoc_iAsignacion', true)
-                                ->first();
-                            if (!$asignacion) {
+                            $this->refrescarAsignacionActual();
+                            if (!$this->asignacionActual) {
                                 Notification::make()
                                     ->title('No asignado')
                                     ->body('El docente no está asignado en esta fecha.')
                                     ->danger()
+                                    ->send();
+                            } else {
+                                $localNombre = optional($this->asignacionActual->local?->localesMaestro)->locma_vcNombre ?? 'Local sin nombre';
+                                $cargoNombre = optional($this->asignacionActual->experienciaAdmision?->maestro)->expadmma_vcNombre ?? 'Cargo sin nombre';
+                                Notification::make()
+                                    ->title('Asignación encontrada')
+                                    ->body("Asignado en: {$localNombre} / {$cargoNombre}. Listo para desasignar.")
+                                    ->success()
                                     ->send();
                             }
                         }

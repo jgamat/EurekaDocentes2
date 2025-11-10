@@ -25,10 +25,13 @@ use Filament\Notifications\Notification;
 use Filament\Tables\Actions\EditAction as TableEditAction;
 use Filament\Tables\Actions\Action as TableAction;
 use Illuminate\Support\Facades\DB;
+use App\Support\Traits\UsesGlobalContext;
+use App\Support\CurrentContext;
 
 class AsignarCargosALocalDocentes extends Page implements HasForms, HasTable
 {
     use InteractsWithForms, InteractsWithTable, HasPageShield;
+    use UsesGlobalContext;
 
     protected static ?string $navigationIcon = 'heroicon-o-academic-cap';
     protected static ?string $navigationGroup = 'Administración de Locales';
@@ -46,35 +49,42 @@ class AsignarCargosALocalDocentes extends Page implements HasForms, HasTable
         ],
     ];
 
+    protected $listeners = ['context-changed' => 'onContextChanged'];
+
     public bool $mostrarTabla = false;
 
     public function mount(): void
     {
-        $abierto = \App\Models\Proceso::where('pro_iAbierto', true)->first();
-        if($abierto){
-            $this->filters['proceso_id'] = $abierto->pro_iCodigo;
-            $activa = $abierto->procesoFecha()->where('profec_iActivo', true)->first();
-            if($activa){
-                $this->filters['proceso_fecha_id'] = $activa->profec_iCodigo;
-            }
-        }
-    $this->form->fill($this->filters);
+        $this->filters['proceso_id'] = app(CurrentContext::class)->procesoId();
+        $this->filters['proceso_fecha_id'] = app(CurrentContext::class)->fechaId();
+        $this->form->fill($this->filters);
+    }
+
+    public function onContextChanged(): void
+    {
+        // Aplicar nuevo contexto y limpiar local + vacantes
+        $this->applyContextFromGlobal(['proceso_id','proceso_fecha_id'], ['local_id'], 'Contexto actualizado.');
+        $this->filters['local_id'] = null;
+        foreach(['2','3','4'] as $k){ $this->filters['vacantes'][$k] = 0; }
+        $this->mostrarTabla = false;
+        $this->form->fill($this->filters);
     }
 
     public function form(Form $form): Form
     {
         return $form
             ->schema([
+                // Fecha global solo lectura
+                $this->fechaActualPlaceholder('proceso_fecha_id'),
                 Select::make('proceso_id')
                     ->label('Proceso Abierto')
                     ->options(fn()=> \App\Models\Proceso::where('pro_iAbierto', true)->orderBy('pro_vcNombre')->pluck('pro_vcNombre','pro_iCodigo'))
-                    ->rule('integer')
-                    ->rule('exists:proceso,pro_iCodigo')
                     ->reactive()
                     ->afterStateUpdated(function($state){
                         $this->filters['proceso_id']=(int)$state; $this->filters['proceso_fecha_id']=null; $this->filters['local_id']=null; $this->mostrarTabla = false; $this->form->fill($this->filters);
                     })
-                    ->required(),
+                    ->required()
+                    ->hidden(),
                 Select::make('proceso_fecha_id')
                     ->label('Fecha Activa')
                     ->options(function(){
@@ -85,20 +95,22 @@ class AsignarCargosALocalDocentes extends Page implements HasForms, HasTable
                             ->orderBy('profec_dFecha')
                             ->pluck('profec_dFecha','profec_iCodigo');
                     })
-                    ->rule('integer')
-                    ->rule('exists:procesofecha,profec_iCodigo')
                     ->reactive()
                     ->afterStateUpdated(function($state){
                         $this->filters['proceso_fecha_id']=(int)$state; $this->filters['local_id']=null; $this->mostrarTabla = false; $this->form->fill($this->filters);
                     })
-                    ->required(),
+                    ->required()
+                    ->hidden(),
                 Select::make('local_id')
                     ->label('Local Asignado')
                     ->options(function(){
                         $fecha = (int)($this->filters['proceso_fecha_id'] ?? 0);
                         if(!$fecha) return [];
-                        return Locales::where('profec_iCodigo',$fecha)->with('localesMaestro','procesoFecha')
-                            ->get()->mapWithKeys(fn($l)=>[$l->loc_iCodigo => ($l->localesMaestro->locma_vcNombre ?? 'N/A')]);
+                        return Locales::where('profec_iCodigo',$fecha)
+                            ->with('localesMaestro','procesoFecha')
+                            ->get()
+                            ->sortBy(function($l){ return $l->localesMaestro->locma_vcNombre ?? ''; })
+                            ->mapWithKeys(fn($l)=>[$l->loc_iCodigo => ($l->localesMaestro->locma_vcNombre ?? 'N/A')]);
                     })
                     ->rule('integer')
                     ->rule('exists:locales,loc_iCodigo')

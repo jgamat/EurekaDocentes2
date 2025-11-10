@@ -112,24 +112,24 @@ class AlumnoAssignmentImportService
                 if ($cargo) { $dto->cargoId = $cargo->expadm_iCodigo; }
             }
 
-            // Local (maestro + instancia) homologado a docentes
+            // Local (maestro + instancia) homologado y corregido: no colocar locma_iCodigo en localId.
             if ($dto->localNombre) {
                 $locKey = $normLocal($dto->localNombre);
                 $localMaestro = $localMaestroMatch[$locKey] ?? null;
                 if (!$localMaestro) {
                     $dto->addError('Local no existe en LocalesMaestro');
                 } else {
+                    $dto->localMaestroId = $localMaestro->locma_iCodigo;
                     if ($dto->procesoFechaId) {
                         $idxKey = $localMaestro->locma_iCodigo.'|'.$dto->procesoFechaId;
                         if (isset($instanciaIndex[$idxKey])) {
                             $dto->localId = $instanciaIndex[$idxKey];
                         } else {
                             $dto->addWarning('Instancia local para fecha será creada');
-                            $dto->localId = $localMaestro->locma_iCodigo; // guardar maestroId temporalmente
+                            // localId queda null y se creará durante import()
                         }
                     } else {
                         $dto->addWarning('Local pendiente de fecha');
-                        $dto->localId = $localMaestro->locma_iCodigo; // maestro hasta conocer fecha
                     }
                 }
             }
@@ -177,20 +177,23 @@ class AlumnoAssignmentImportService
                 if (!$dto instanceof AlumnoAssignmentRow) { $skipped++; continue; }
                 if (!$dto->valid) { $skipped++; continue; }
                 if (!$dto->procesoFechaId) { $skipped++; continue; }
-                // Asegurar instancia de local si aún es maestroId (misma lógica docentes)
-                if ($dto->localNombre) {
-                    if ($dto->localId && !Locales::where('loc_iCodigo',$dto->localId)->exists()) {
-                        if ($dto->procesoFechaId) {
-                            $inst = Locales::firstOrCreate([
-                                'locma_iCodigo' => $dto->localId,
-                                'profec_iCodigo' => $dto->procesoFechaId,
-                            ]);
-                            $dto->localId = $inst->loc_iCodigo;
-                        }
-                    } elseif (!$dto->localId && $dto->procesoFechaId) {
-                        $maestro = LocalesMaestro::firstOrCreate(['locma_vcNombre' => $dto->localNombre]);
+                // Asegurar instancia de local: crear usando localMaestroId si localId aún null
+                if ($dto->localNombre && $dto->procesoFechaId) {
+                    if (!$dto->localId) {
+                        // Crear maestro si falta
+                        $maestro = $dto->localMaestroId
+                            ? LocalesMaestro::firstOrCreate(['locma_iCodigo' => $dto->localMaestroId], ['locma_vcNombre' => $dto->localNombre])
+                            : LocalesMaestro::firstOrCreate(['locma_vcNombre' => $dto->localNombre]);
                         $inst = Locales::firstOrCreate([
                             'locma_iCodigo' => $maestro->locma_iCodigo,
+                            'profec_iCodigo' => $dto->procesoFechaId,
+                        ]);
+                        $dto->localId = $inst->loc_iCodigo;
+                    } elseif (!Locales::where('loc_iCodigo', $dto->localId)->exists()) {
+                        // Valor legado erróneo (probablemente locma_iCodigo) => recrear instancia
+                        $maestroId = $dto->localMaestroId ?? $dto->localId;
+                        $inst = Locales::firstOrCreate([
+                            'locma_iCodigo' => $maestroId,
                             'profec_iCodigo' => $dto->procesoFechaId,
                         ]);
                         $dto->localId = $inst->loc_iCodigo;

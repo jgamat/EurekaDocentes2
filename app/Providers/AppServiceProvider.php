@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use App\Support\CurrentContext;
+use Illuminate\Support\Facades\View;
 use Spatie\Activitylog\Models\Activity;
 
 class AppServiceProvider extends ServiceProvider
@@ -19,7 +21,9 @@ class AppServiceProvider extends ServiceProvider
 
     public function register(): void
     {
-        //
+        $this->app->singleton(CurrentContext::class, function () {
+            return new CurrentContext();
+        });
     }
 
     public function boot(): void
@@ -31,6 +35,11 @@ class AppServiceProvider extends ServiceProvider
         $this->configureModels();
 
         $this->configureFilament();
+
+        // Share current context with all views
+        $ctx = $this->app->make(CurrentContext::class);
+        $ctx->ensureLoaded();
+        View::share('currentContext', $ctx);
     }
 
     private function configurePolicies(): void

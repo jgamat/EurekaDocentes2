@@ -12,18 +12,22 @@
         .title { font-weight:bold; }
     .page { page-break-after: auto; position: relative; }
         table { width:100%; border-collapse: collapse; table-layout: auto; }
-    th, td { border: 1px solid #000; padding: 2px; vertical-align: top; }
+    th, td { border: 1px solid #000; padding: 2px; vertical-align: middle; }
         td { line-height: 1.1; white-space: normal; word-break: break-word; overflow-wrap: break-word; }
     /* Quitar evitación forzada de salto dentro de cada fila; permitimos que DOMPDF empaquete varias filas */
     /* tbody tr { page-break-inside: avoid; } */
     .tabla-detalle tbody tr { page-break-inside: auto; }
         th { background: #eee; }
-        .firma { height: 28px; }
+    .firma { height: 28px; vertical-align: middle; position: relative; }
         .resumen-total { text-align: right; font-weight: bold; }
         .content { position: relative; }
 
-        .tabla-detalle tbody td { border: 0 !important; }
-        .tabla-detalle thead th { border: 1px solid #000 !important; }
+    .tabla-detalle tbody td { border: 0 !important; vertical-align: middle; }
+    .tabla-detalle thead th { border: 1px solid #000 !important; }
+    /* No wrap + truncate (via PHP) sólo para columnas de Local y Cargo en detalle */
+    .nowrap-truncate { white-space: nowrap; overflow: hidden; }
+    /* Fila espaciadora al inicio del detalle de la primera planilla */
+    .spacer-row td { height: 16px; }
     </style>
 </head>
 <body>
@@ -65,6 +69,19 @@
                 <div class="bg"><img src="{{ $bg_detail_url }}" alt="template"></div>
             @endif
             <div class="content">
+                @php
+                    // Helper truncado seguro con … (DOMPDF no soporta text-overflow: ellipsis)
+                    $lim = function($s, $n){
+                        $s = (string)($s ?? '');
+                        return (mb_strlen($s, 'UTF-8') <= $n)
+                            ? $s
+                            : (mb_substr($s, 0, max(0, $n-1), 'UTF-8') . '…');
+                    };
+                    // Límites por tipo, coherentes con anchos de columnas
+                    // Aumentados levemente para aprovechar mejor el espacio disponible en celdas
+                    $localLimit = (!empty($es_tercero_cas) && $es_tercero_cas) ? 42 : ((!empty($es_alumno) && $es_alumno) ? 32 : 28);
+                    $cargoLimit = (!empty($es_tercero_cas) && $es_tercero_cas) ? 38 : ((!empty($es_alumno) && $es_alumno) ? 28 : 26);
+                @endphp
                 <div style="margin-bottom:6px;">
                     <strong>Local:</strong> {{ $p['local_nombre'] }}
                     @if((empty($es_admin) || !$es_admin) && (empty($es_alumno) || !$es_alumno))
@@ -110,6 +127,20 @@
                         </tr>
                     </thead>
                     <tbody>
+                        <tr class="spacer-row">
+                            <td style="text-align:center;">&nbsp;</td>
+                            @unless(!empty($es_tercero_cas) && $es_tercero_cas)
+                                <td>&nbsp;</td>
+                            @endunless
+                            <td>&nbsp;</td>
+                            <td>&nbsp;</td>
+                            <td class="nowrap-truncate">&nbsp;</td>
+                            <td class="nowrap-truncate">&nbsp;</td>
+                            @unless((!empty($es_tercero_cas) && $es_tercero_cas) || (!empty($es_alumno) && $es_alumno))
+                                <td>&nbsp;</td>
+                            @endunless
+                            <td class="firma">&nbsp;</td>
+                        </tr>
             @foreach($p['rows'] as $r)
                             <tr>
                 <td style="text-align:center;">{{ $r['orden'] ?? $loop->iteration }}</td>
@@ -118,13 +149,13 @@
                                 @endunless
                                 <td>{{ $r['dni'] }}</td>
                                 <td>{{ $r['nombres'] }}</td>
-                                <td>{{ $r['local_nombre'] }}</td>
-                                <td>{{ $r['cargo_nombre'] }}</td>
+                                <td class="nowrap-truncate">{{ $lim($r['local_nombre'] ?? '', $localLimit) }}</td>
+                                <td class="nowrap-truncate">{{ $lim($r['cargo_nombre'] ?? '', $cargoLimit) }}</td>
                                 @unless((!empty($es_tercero_cas) && $es_tercero_cas) || (!empty($es_alumno) && $es_alumno))
                                     <td style="text-align:right;">{{ number_format($r['monto'],2) }}</td>
                                 @endunless
-                                <td class="firma" style="position:relative; vertical-align:bottom;">
-                                    <div style="position:absolute; left:2%; right:2%; bottom:3px; border-bottom:1px solid #000; height:0; line-height:0;">
+                                <td class="firma" style="position:relative;">
+                                    <div style="position:absolute; left:2%; right:2%; top:50%; transform: translateY(-50%); border-bottom:1px solid #000; height:0; line-height:0;">
                                         &nbsp;
                                     </div>
                                 </td>
@@ -168,6 +199,8 @@
                         <tr>
                             <th style="text-align:left;">Cargo</th>
                             <th style="text-align:center;">Cantidad</th>
+                            <th style="text-align:center;">Asistentes</th>
+                            <th style="text-align:center;">Inasistentes</th>
                             <th style="text-align:center;">Monto</th>
                             <th style="text-align:center;">Subtotal</th>
                         </tr>
@@ -177,12 +210,14 @@
                             <tr>
                                 <td>{{ $item['cargo_nombre'] }}</td>
                                 <td style="text-align:center;">{{ $item['cantidad'] }}</td>
+                                <td style="text-align:center;">{{ $item['asistentes'] ?? '' }}</td>
+                                <td style="text-align:center;">{{ $item['inasistentes'] ?? '' }}</td>
                                 <td style="text-align:center;">{{ number_format($item['monto'],2) }}</td>
                                 <td style="text-align:center;">{{ number_format($item['subtotal'],2) }}</td>
                             </tr>
                         @endforeach
                         <tr>
-                            <td colspan="3" class="resumen-total" style="text-align:right;">Total por local</td>
+                            <td colspan="5" class="resumen-total" style="text-align:right;">Total por local</td>
                             <td style="text-align:center;">{{ number_format($p['gran_total'],2) }}</td>
                         </tr>
                     </tbody>
@@ -195,9 +230,9 @@
                             <th colspan="3" style="text-align:left; background:#f5f5f5; border:1px solid #000; padding:6px 8px;">Jefe de Unidad</th>
                         </tr>
                         <tr>
-                            <th style="width:55%; border:1px solid #000; padding:4px 6px;">Apellidos y Nombres</th>
+                            <th style="width:60%; border:1px solid #000; padding:4px 6px;">Apellidos y Nombres</th>
                             <th style="width:20%; border:1px solid #000; padding:4px 6px;">Firma</th>
-                            <th style="width:25%; border:1px solid #000; padding:4px 6px;">Fecha y Hora</th>
+                            <th style="width:20%; border:1px solid #000; padding:4px 6px;">Fecha y Hora</th>
                         </tr>
                         <tr style="height:50px;">
                             <td style="border:1px solid #000; padding:10px 12px;">&nbsp;</td>

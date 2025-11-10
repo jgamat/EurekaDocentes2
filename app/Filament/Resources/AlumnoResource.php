@@ -32,7 +32,57 @@ class AlumnoResource extends Resource
     {
         return $form
             ->schema([
-                //
+                Forms\Components\Grid::make(2)->schema([
+                    Forms\Components\TextInput::make('alu_vcDni')
+                        ->label('DNI')
+                        ->required()
+                        ->maxLength(15)
+                        ->length(8)
+                        ->numeric()
+                        ->unique(table: 'alumno', column: 'alu_vcDni', ignoreRecord: true)
+                        ->validationMessages([
+                            'unique' => 'El DNI ya está registrado.',
+                            'length' => 'El DNI debe tener exactamente 8 dígitos.',
+                            'numeric' => 'El DNI solo debe contener números.',
+                        ]),
+                    Forms\Components\TextInput::make('alu_vcCodigo')
+                        ->label('Código')
+                        ->required()
+                        ->maxLength(20)
+                        ->unique(table: 'alumno', column: 'alu_vcCodigo', ignoreRecord: true),
+                    Forms\Components\TextInput::make('alu_vcPaterno')
+                        ->label('Apellido Paterno')
+                        ->required(),
+                    Forms\Components\TextInput::make('alu_vcMaterno')
+                        ->label('Apellido Materno')
+                        ->required(),
+                    Forms\Components\TextInput::make('alu_vcNombre')
+                        ->label('Nombres')
+                        ->required(),
+                    Forms\Components\Select::make('tipo_iCodigo')
+                        ->label('Tipo')
+                        ->options(function(){
+                            $permitidos = config('alumnos.tipos_permitidos_creacion');
+                            return \App\Models\Tipo::whereIn('tipo_iCodigo',$permitidos)
+                                ->orderBy('tipo_vcNombre')
+                                ->pluck('tipo_vcNombre','tipo_iCodigo');
+                        })
+                        ->default(fn()=> config('alumnos.tipo_default_creacion'))
+                        ->required()
+                        ->searchable()
+                        ->validationMessages([
+                            'required' => 'El campo Tipo de Alumno es obligatorio.',
+                        ]),
+                        
+                    Forms\Components\TextInput::make('alu_vcEmail')
+                        ->label('Email')
+                        ->email()
+                        ->maxLength(120),
+                    Forms\Components\TextInput::make('alu_vcEmailPer')
+                        ->label('Email Personal')
+                        ->email()
+                        ->maxLength(120),
+                ])
             ]);
     }
 

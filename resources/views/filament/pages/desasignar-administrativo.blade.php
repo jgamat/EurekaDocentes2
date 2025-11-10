@@ -8,6 +8,8 @@
 				<li><b>Administrativo:</b> {{ $this->asignacionActual->administrativo->adm_vcNombres ?? '-' }}</li>
 				<li><b>DNI:</b> {{ $this->asignacionActual->administrativo->adm_vcDni ?? '-' }}</li>
 				<li><b>Código:</b> {{ $this->asignacionActual->administrativo->adm_vcCodigo ?? '-' }}</li>
+				<li><b>Local:</b> {{ $this->asignacionActual->local?->localesMaestro?->locma_vcNombre ?? '—' }}</li>
+				<li><b>Cargo:</b> {{ $this->asignacionActual->experienciaAdmision?->maestro?->expadmma_vcNombre ?? '—' }}</li>
 				<li><b>Fecha:</b> {{ $this->asignacionActual->procesoFecha->profec_dFecha ?? '-' }}</li>
 				<li><b>Usuario Asignador:</b> {{ $this->asignacionActual->usuario->name ?? '-' }}</li>
 				<li><b>Fecha Asignación:</b> {{ $this->asignacionActual->proadm_dtFechaAsignacion ?? '-' }}</li>

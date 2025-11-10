@@ -26,6 +26,7 @@ use Swis\Filament\Backgrounds\FilamentBackgroundsPlugin;
 use App\Http\Middleware\RateLimitLogin;
 use App\Filament\Pages\Auth\Login as CustomLogin;
 use Tapp\FilamentAuthenticationLog\FilamentAuthenticationLogPlugin;
+use App\Http\Middleware\LoadContext;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -93,7 +94,8 @@ class AdminPanelProvider extends PanelProvider
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
 
-                SetTheme::class
+                SetTheme::class,
+                LoadContext::class,
             ])
             ->plugins([
                 FilamentShieldPlugin::make(),

@@ -3,6 +3,7 @@
 namespace App\Exports\Sheets;
 
 use App\Models\ProcesoAlumno;
+use Illuminate\Support\Facades\DB; // (opcional) por consistencia con otros sheets
 
 class ConsolidadoAlumnosSheet extends BaseConsolidadoSheet
 {
@@ -22,9 +23,21 @@ class ConsolidadoAlumnosSheet extends BaseConsolidadoSheet
             ->with(['alumno.tipo','experienciaAdmision.maestro','local.localesMaestro','procesoFecha'])
             // Join a la tabla alumno para ordenar
             ->leftJoin('alumno', 'alumno.alu_vcCodigo', '=', 'procesoalumno.alu_vcCodigo')
-            ->leftJoin('planillaAlumno as plaalu', 'plaalu.alu_vcCodigo', '=', 'procesoalumno.alu_vcCodigo')
+            // Ajuste: profec_iCodigo sólo en planilla, no en planillaAlumno
+                        ->leftJoin('planillaAlumno as plaalu', function($j){
+                                $j->on('plaalu.alu_vcCodigo','=','procesoalumno.alu_vcCodigo')
+                                    ->whereExists(function($q){
+                                            $q->selectRaw(1)
+                                                ->from('planilla as plx')
+                                                ->whereColumn('plx.pla_id','plaalu.pla_id')
+                                                ->where('plx.pla_bActivo',1)
+                                                ->where('plx.profec_iCodigo',$this->procesoFechaId);
+                                    });
+                        })
             ->leftJoin('planilla as pl', function($j){
-                $j->on('pl.pla_id','=','plaalu.pla_id');
+                $j->on('pl.pla_id','=','plaalu.pla_id')
+                  ->where('pl.pla_bActivo',1)
+                  ->where('pl.profec_iCodigo','=',$this->procesoFechaId);
             })
             ->where('procesoalumno.profec_iCodigo', $this->procesoFechaId)
             ->where('procesoalumno.proalu_iAsignacion', 1)
@@ -33,7 +46,7 @@ class ConsolidadoAlumnosSheet extends BaseConsolidadoSheet
             ->orderBy('alumno.alu_vcPaterno')
             ->orderBy('alumno.alu_vcMaterno')
             ->orderBy('alumno.alu_vcNombre');
-                $query->where('pl.pla_bActivo',1);
+    // Filtro activo + fecha ya dentro del join
         $rows = $query->get();
         $out=[];
         foreach($rows as $r){

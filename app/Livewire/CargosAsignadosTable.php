@@ -9,6 +9,8 @@ use Filament\Forms\Contracts\HasForms;
 use Filament\Tables\Actions\DetachAction;
 use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
+use Filament\Forms\Components\TextInput as FormsTextInput;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
@@ -47,27 +49,39 @@ class CargosAsignadosTable extends Component implements HasForms, HasTable
             }
 
             return ExperienciaAdmision::query()
-                ->join('localcargo', 'experienciaadmision.expadm_iCodigo', '=', 'localcargo.expadm_iCodigo')     
+                ->join('localcargo', 'experienciaadmision.expadm_iCodigo', '=', 'localcargo.expadm_iCodigo')
                 ->join('experienciaadmisionMaestro', 'experienciaadmision.expadmma_iCodigo', '=', 'experienciaadmisionMaestro.expadmma_iCodigo')
                 ->where('localcargo.loc_iCodigo', $this->local->loc_iCodigo)
-                
                 ->select(
-                  'experienciaadmision.*', 
-                  'experienciaadmisionMaestro.expadmma_vcNombre', 
-                  'localcargo.loccar_iVacante as pivot_loccar_iVacante',
-                  'localcargo.loccar_iOcupado as pivot_loccar_iOcupado'
-              );
+                    'experienciaadmision.*',
+                    'experienciaadmisionMaestro.expadmma_vcNombre',
+                    'localcargo.loccar_iVacante as pivot_loccar_iVacante',
+                    'localcargo.loccar_iOcupado as pivot_loccar_iOcupado'
+                )
+                ->orderBy('experienciaadmisionMaestro.expadmma_vcNombre', 'asc');
        
         
         
         })
         ->heading('Cargos Ya Asignados a este Local')
         ->columns([
-            TextColumn::make('expadmma_vcNombre')->label('Nombre del Cargo'),
-
-            
+            TextColumn::make('expadmma_vcNombre')->label('Nombre del Cargo')->sortable()->searchable(),
             TextColumn::make('pivot_loccar_iVacante')->label('Vacantes'),
             TextColumn::make('pivot_loccar_iOcupado')->label('Ocupados'),
+        ])
+        ->filters([
+            Filter::make('nombre')
+                ->form([
+                    FormsTextInput::make('q')->label('Buscar por nombre')
+                        ->placeholder('Ej: Coordinador')
+                        ->live(debounce: 500),
+                ])
+                ->query(function ($query, array $data) {
+                    $q = trim($data['q'] ?? '');
+                    if ($q === '') return $query;
+                    $like = '%'.str_replace(' ', '%', $q).'%';
+                    return $query->where('experienciaadmisionMaestro.expadmma_vcNombre', 'like', $like);
+                })
         ])
         ->actions([
             
