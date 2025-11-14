@@ -39,6 +39,8 @@ class AsignarDocentes extends Page implements HasForms
     public ?LocalCargo $plazaSeleccionada = null;
 
     public ?array $data = [];
+    // Bandera para evitar que el afterStateUpdated de la fecha limpie Local/Cargo
+    protected bool $suppressFechaReset = false;
     #[On('contextoActualizado')]
     public function actualizarPlazaSeleccionada($procesoFechaId, $localId, $experienciaAdmisionId)
     {
@@ -95,7 +97,10 @@ class AsignarDocentes extends Page implements HasForms
                     ->hidden()
                     ->dehydrated(true)
                     ->default(fn()=> app(CurrentContext::class)->fechaId())
-                    ->afterStateUpdated(function ($state, callable $get, callable $set) {
+                    ->afterStateUpdated(function ($state, callable $get, callable $set, $old) {
+                        // Evitar limpiar Local/Cargo cuando el cambio de fecha es programático o no hubo cambio real
+                        if ($this->suppressFechaReset) { return; }
+                        if ((string)$old === (string)$state) { return; }
                         $set('local_id', null);
                         $set('experiencia_admision_id', null);
                         $this->plazaSeleccionada = null;
@@ -262,6 +267,7 @@ class AsignarDocentes extends Page implements HasForms
     if (!isset($data['proceso_fecha_id'])) {
         // Evitar disparar afterStateUpdated del select de fecha (que limpia Local/Cargo)
         // actualizando directamente el estado base del formulario.
+        $this->suppressFechaReset = true;
         $this->data['proceso_fecha_id'] = $fechaId;
         $data['proceso_fecha_id'] = $fechaId;
     }
@@ -387,8 +393,17 @@ class AsignarDocentes extends Page implements HasForms
     );
 
     // Mantener Local y Cargo seleccionados; solo limpiar el campo de búsqueda de docente.
-    $this->form->fill([
-        'docente_id' => null,
-    ]);
+    // Evitar efectos colaterales de form->fill sobre selects reactivos
+    $this->suppressFechaReset = true;
+    $this->data['local_id'] = $plaza->loc_iCodigo;
+    $this->data['experiencia_admision_id'] = $plaza->expadm_iCodigo;
+    $this->data['docente_id'] = null;
+    $this->suppressFechaReset = false;
+    // Asegurar que la fecha global permanezca en el state tras el ciclo de asignación
+    $this->suppressFechaReset = true;
+    $this->data['proceso_fecha_id'] = $fechaId;
+    $this->suppressFechaReset = false;
+    // Rehabilitar el reset normal de fecha para futuros cambios del usuario
+    $this->suppressFechaReset = false;
 }
 }
