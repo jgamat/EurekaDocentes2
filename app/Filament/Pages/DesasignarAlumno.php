@@ -89,15 +89,12 @@ class DesasignarAlumno extends Page implements HasForms
                     ->label('Buscar Alumno')
                     ->searchable()
                     ->getSearchResultsUsing(function (string $search) {
-                        if (strlen($search) < 2) return [];
+                        if (strlen(trim($search)) < 2) return [];
                         return Alumno::query()
-                            ->where(function ($query) use ($search) {
-                                $query->where('alu_vcNombre', 'like', "%{$search}%")
-                                    ->orWhere('alu_vcPaterno', 'like', "%{$search}%")
-                                    ->orWhere('alu_vcMaterno', 'like', "%{$search}%")
-                                    ->orWhere('alu_vcDni', 'like', "%{$search}%")
-                                    ->orWhere('alu_vcCodigo', 'like', "%{$search}%");
-                            })
+                            ->searchPerson($search)
+                            ->orderBy('alu_vcPaterno')
+                            ->orderBy('alu_vcMaterno')
+                            ->orderBy('alu_vcNombre')
                             ->limit(10)
                             ->get()
                             ->mapWithKeys(fn($alu) => [

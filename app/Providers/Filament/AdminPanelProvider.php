@@ -25,6 +25,7 @@ use Jeffgreco13\FilamentBreezy\BreezyCore;
 use Swis\Filament\Backgrounds\FilamentBackgroundsPlugin;
 use App\Http\Middleware\RateLimitLogin;
 use App\Filament\Pages\Auth\Login as CustomLogin;
+use App\Http\Middleware\SetPanelLocale;
 use Tapp\FilamentAuthenticationLog\FilamentAuthenticationLogPlugin;
 use App\Http\Middleware\LoadContext;
 
@@ -37,7 +38,7 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
            
             ->path('admin')
-           // ->passwordReset()
+            ->passwordReset()
             ->login(CustomLogin::class)
             ->colors([
                 'primary' => Color::Amber,
@@ -88,6 +89,7 @@ class AdminPanelProvider extends PanelProvider
                 StartSession::class,
                 AuthenticateSession::class,
                 RateLimitLogin::class,
+                SetPanelLocale::class,
                 ShareErrorsFromSession::class,
                 VerifyCsrfToken::class,
                 SubstituteBindings::class,

@@ -109,6 +109,9 @@ class AsignarCargosALocal extends Page
                             ->toArray();
                     })
                     ->searchable()
+                    ->validationMessages([
+                        'required' => 'Seleccione un Local.',
+                    ])
                     ->required()
                     ->reactive()
                     ->afterStateUpdated(function ($state, callable $set) {

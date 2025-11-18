@@ -118,15 +118,13 @@ class DesasignarDocente extends Page implements HasForms
                     ->label('Buscar Docente')
                     ->searchable()
                     ->getSearchResultsUsing(function (string $search) {
-                        if (strlen($search) < 2) return [];
-                        return Docente::where('doc_iActivo', 1)
-                            ->where(function ($query) use ($search) {
-                                $query->where('doc_vcNombre', 'like', "%{$search}%")
-                                    ->orWhere('doc_vcPaterno', 'like', "%{$search}%")
-                                    ->orWhere('doc_vcMaterno', 'like', "%{$search}%")
-                                    ->orWhere('doc_vcDni', 'like', "%{$search}%")
-                                    ->orWhere('doc_vcCodigo', 'like', "%{$search}%");
-                            })
+                        if (strlen(trim($search)) < 2) return [];
+                        return Docente::query()
+                            ->where('doc_iActivo', 1)
+                            ->searchPerson($search)
+                            ->orderBy('doc_vcPaterno')
+                            ->orderBy('doc_vcMaterno')
+                            ->orderBy('doc_vcNombre')
                             ->limit(10)
                             ->get()
                             ->mapWithKeys(fn($docente) => [

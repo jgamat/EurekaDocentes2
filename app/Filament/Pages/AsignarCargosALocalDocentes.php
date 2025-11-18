@@ -123,6 +123,9 @@ class AsignarCargosALocalDocentes extends Page implements HasForms, HasTable
                         }
                         $this->form->fill($this->filters);
                     })
+                    ->validationMessages([
+                        'required' => 'Seleccione un Local.',
+                    ])
                     ->required(),
 
                 Section::make('Cargos a asignar (Docentes)')

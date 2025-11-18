@@ -110,6 +110,9 @@ class AsignarAlumnos extends Page implements HasForms
                     ->preload()
                     ->optionsLimit(1000)
                     ->searchable()
+                    ->validationMessages([
+                        'required' => 'Seleccione un Local.',
+                    ])
                     ->required()
                     ->reactive()
                     ->afterStateUpdated(function ($state, callable $get, callable $set) {
@@ -140,9 +143,15 @@ class AsignarAlumnos extends Page implements HasForms
                         $query = $local->experienciaAdmision();
                         $excluir = [2,3,4];
                         $query->whereHas('maestro', fn($q)=> $q->whereNotIn('expadmma_iCodigo',$excluir));
-                        return $query->with('maestro')->get()->pluck('maestro.expadmma_vcNombre','expadm_iCodigo');
+                        // Ordenar por nombre del cargo (relación maestro)
+                        $cargos = $query->with('maestro')->get()
+                            ->sortBy(fn($c) => mb_strtolower($c->maestro->expadmma_vcNombre ?? ''), SORT_NATURAL);
+                        return $cargos->pluck('maestro.expadmma_vcNombre','expadm_iCodigo');
                     })
                     ->searchable()
+                    ->validationMessages([
+                        'required' => 'Seleccione un Cargo.',
+                    ])
                     ->required()
                     ->reactive()
                     ->afterStateUpdated(function ($state, callable $get) {
@@ -171,16 +180,12 @@ class AsignarAlumnos extends Page implements HasForms
                     ->helperText('Primero seleccione Local y Cargo; luego elija al alumno para asignar.')
                     ->disabled(fn (callable $get) => empty($get('local_id')) || empty($get('experiencia_admision_id')))
                     ->getSearchResultsUsing(function (string $search): array {
-                        if (strlen($search) < 2) return [];
+                        if (strlen(trim($search)) < 2) return [];
                         return Alumno::query()
-                            ->where(function ($q) use ($search) {
-                                $q->where('alu_vcNombre', 'like', "%{$search}%")
-                                  ->orWhere('alu_vcPaterno', 'like', "%{$search}%")
-                                  ->orWhere('alu_vcMaterno', 'like', "%{$search}%")
-                                  ->orWhere('alu_vcDni', 'like', "%{$search}%")
-                                  ->orWhere('alu_vcCodigo', 'like', "%{$search}%");
-                            })
+                            ->searchPerson($search)
                             ->orderBy('alu_vcPaterno')
+                            ->orderBy('alu_vcMaterno')
+                            ->orderBy('alu_vcNombre')
                             ->limit(25)
                             ->get()
                             ->mapWithKeys(fn(Alumno $a) => [

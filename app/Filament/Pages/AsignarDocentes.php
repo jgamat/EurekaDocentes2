@@ -148,6 +148,9 @@ class AsignarDocentes extends Page implements HasForms
                     ->preload()
                     ->optionsLimit(1000)
                     ->searchable()
+                    ->validationMessages([
+                        'required' => 'Seleccione un Local.',
+                    ])
                     ->required()
                     ->reactive()
                     ->afterStateUpdated(function ($state, callable $get, callable $set) {
@@ -200,6 +203,9 @@ class AsignarDocentes extends Page implements HasForms
                     })
                     ->searchable()
                     ->preload() // Mostrar todas las opciones sin necesidad de escribir
+                    ->validationMessages([
+                        'required' => 'Seleccione un Cargo.',
+                    ])
                     ->required()
                     ->reactive()
                     ->afterStateUpdated(function ($state, callable $get) {
@@ -226,17 +232,13 @@ class AsignarDocentes extends Page implements HasForms
                         ->helperText('Primero seleccione Local y Cargo; luego elija el docente para asignar.')
                         ->disabled(fn(callable $get) => empty($get('local_id')) || empty($get('experiencia_admision_id')))
                         ->getSearchResultsUsing(function (string $search): array {
-                            if (strlen($search) < 2) return [];
+                            if (strlen(trim($search)) < 2) return [];
                             return Docente::query()
                                 ->where('doc_iActivo', 1)
-                                ->where(function ($q) use ($search) {
-                                    $q->where('doc_vcNombre', 'like', "%{$search}%")
-                                      ->orWhere('doc_vcPaterno', 'like', "%{$search}%")
-                                      ->orWhere('doc_vcMaterno', 'like', "%{$search}%")
-                                      ->orWhere('doc_vcDni', 'like', "%{$search}%")
-                                      ->orWhere('doc_vcCodigo', 'like', "%{$search}%");
-                                })
+                                ->searchPerson($search)
                                 ->orderBy('doc_vcPaterno')
+                                ->orderBy('doc_vcMaterno')
+                                ->orderBy('doc_vcNombre')
                                 ->limit(25)
                                 ->get()
                                 ->mapWithKeys(fn (Docente $d) => [

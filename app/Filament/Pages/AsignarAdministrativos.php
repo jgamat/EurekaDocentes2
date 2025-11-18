@@ -134,6 +134,9 @@ class AsignarAdministrativos extends Page implements HasForms
                     ->preload()
                     ->optionsLimit(1000)
                     ->searchable()
+                    ->validationMessages([
+                        'required' => 'Seleccione un Local.',
+                    ])
                     ->required()
                     ->reactive()
                     ->afterStateUpdated(function ($state, callable $get, callable $set) {
@@ -163,9 +166,15 @@ class AsignarAdministrativos extends Page implements HasForms
                         $query = $local->experienciaAdmision();
                         $excluir = [2,3,4];
                         $query->whereHas('maestro', fn($q)=> $q->whereNotIn('expadmma_iCodigo',$excluir));
-                        return $query->with('maestro')->get()->pluck('maestro.expadmma_vcNombre','expadm_iCodigo');
+                        // Ordenar por nombre del cargo (relación maestro)
+                        $cargos = $query->with('maestro')->get()
+                            ->sortBy(fn($c) => mb_strtolower($c->maestro->expadmma_vcNombre ?? ''), SORT_NATURAL);
+                        return $cargos->pluck('maestro.expadmma_vcNombre','expadm_iCodigo');
                     })
                     ->searchable()
+                    ->validationMessages([
+                        'required' => 'Seleccione un Cargo.',
+                    ])
                     ->required()
                     ->reactive()
                     ->afterStateUpdated(function ($state, callable $get) {

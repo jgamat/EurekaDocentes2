@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Builder;
 
 
 class Docente extends Model
@@ -67,10 +68,41 @@ class Docente extends Model
     
     public function asignaciones(): HasMany
     {
-        
         return $this->hasMany(ProcesoDocente::class, 'doc_vcCodigo', 'doc_vcCodigo');
     }
 
+    /**
+     * Busca por apellidos y nombres con soporte multi-token.
+     * Admite entradas como "Paterno Materno" o "Paterno Materno Nombre".
+     * También mantiene coincidencias por DNI y Código.
+     */
+    public function scopeSearchPerson(Builder $query, string $search): Builder
+    {
+        $s = trim(preg_replace('/\s+/', ' ', $search));
+        if ($s === '') {
+            return $query;
+        }
 
+        $tokens = explode(' ', $s);
 
+        return $query->where(function (Builder $q) use ($tokens, $s) {
+            // Requerir que todos los tokens aparezcan en alguno de los campos básicos
+            foreach ($tokens as $t) {
+                $like = "%" . $t . "%";
+                $q->where(function (Builder $qq) use ($like) {
+                    $qq->where('doc_vcPaterno', 'like', $like)
+                       ->orWhere('doc_vcMaterno', 'like', $like)
+                       ->orWhere('doc_vcNombre', 'like', $like);
+                });
+            }
+
+            // Atajos por concatenaciones completas
+            $likeAll = "%" . $s . "%";
+            $q->orWhereRaw("CONCAT_WS(' ', doc_vcPaterno, doc_vcMaterno) LIKE ?", [$likeAll])
+              ->orWhereRaw("CONCAT_WS(' ', doc_vcPaterno, doc_vcMaterno, doc_vcNombre) LIKE ?", [$likeAll])
+              // También permitir búsqueda por DNI y Código dentro del mismo bloque
+              ->orWhere('doc_vcDni', 'like', $likeAll)
+              ->orWhere('doc_vcCodigo', 'like', $likeAll);
+        });
+    }
 }
