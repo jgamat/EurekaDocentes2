@@ -20,7 +20,7 @@ class ConsolidadoAlumnosSheet extends BaseConsolidadoSheet
     protected function queryRows(): array
     {
         $query = ProcesoAlumno::query()
-            ->with(['alumno.tipo','experienciaAdmision.maestro','local.localesMaestro','procesoFecha'])
+            ->with(['alumno.tipo','experienciaAdmision.maestro','local.localesMaestro','procesoFecha','usuario'])
             // Join a la tabla alumno para ordenar
             ->leftJoin('alumno', 'alumno.alu_vcCodigo', '=', 'procesoalumno.alu_vcCodigo')
             // Ajuste: profec_iCodigo sólo en planilla, no en planillaAlumno
@@ -62,6 +62,7 @@ class ConsolidadoAlumnosSheet extends BaseConsolidadoSheet
                 'fecha_asignacion' => $r->procesoFecha?->profec_dFecha,
                 'credencial' => $r->proalu_iCodigo,
                 'numero_planilla' => $r->pla_iNumero,
+                'usuario_asignador' => $r->usuario?->name ?? '',
             ];
         }
         return $out;

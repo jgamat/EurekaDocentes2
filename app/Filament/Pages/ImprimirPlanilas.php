@@ -480,6 +480,8 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
     public function generatePdf(?array $codigosFilter = null)
     {
         try {
+            ini_set('memory_limit', '-1');
+            set_time_limit(0);
             // Fuerza recarga de código en entornos con OPcache (desarrollo)
             if (function_exists('opcache_reset')) { @opcache_reset(); }
             $procesoId = (int)($this->filters['proceso_id'] ?? 0);
@@ -905,6 +907,8 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
     public function generatePdfAdministrativos(?array $dniFilter = null)
     {
         try {
+            ini_set('memory_limit', '-1');
+            set_time_limit(0);
             if (function_exists('opcache_reset')) { @opcache_reset(); }
             $procesoId = (int)($this->filters['proceso_id'] ?? 0);
             $fechaId = (int)($this->filters['proceso_fecha_id'] ?? 0);
@@ -1254,6 +1258,8 @@ class ImprimirPlanilas extends Page implements HasForms, HasTable
     public function generatePdfAlumnos(?array $codigosFilter = null)
     {
         try {
+            ini_set('memory_limit', '-1');
+            set_time_limit(0);
             if (function_exists('opcache_reset')) { @opcache_reset(); }
             $procesoId = (int)($this->filters['proceso_id'] ?? 0);
             $fechaId = (int)($this->filters['proceso_fecha_id'] ?? 0);

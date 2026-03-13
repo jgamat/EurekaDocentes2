@@ -37,6 +37,7 @@ abstract class BaseConsolidadoSheet implements FromCollection, WithHeadings, Wit
                 $r['fecha_asignacion'] ?? '',
                 $r['credencial'] ?? '',
                 $r['numero_planilla'] ?? '',
+                $r['usuario_asignador'] ?? '',
             ];
         }
         return collect($out);
@@ -46,28 +47,28 @@ abstract class BaseConsolidadoSheet implements FromCollection, WithHeadings, Wit
     {
         return [
             [strtoupper($this->titleFull())],
-            ["FECHA: {$this->fechaLabel}", '', '', '', '', '', '', '', 'GENERADO: '.$this->generatedAt],
-            ['N°','Tipo de personal','Código','DNI','Apellidos y Nombres','Local','Cargo','Monto','Fecha Asignación','N° Credencial','N° Planilla'],
+            ["FECHA: {$this->fechaLabel}", '', '', '', '', '', '', '', '', '', 'GENERADO: '.$this->generatedAt],
+            ['N°','Tipo de personal','Código','DNI','Apellidos y Nombres','Local','Cargo','Monto','Fecha Asignación','N° Credencial','N° Planilla','Usuario Asignador'],
         ];
     }
 
     public function styles(Worksheet $sheet)
     {
         // Merge title row
-        $sheet->mergeCells('A1:K1');
+        $sheet->mergeCells('A1:L1');
         // Bold title & headings
         $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
-        $sheet->getStyle('A3:K3')->getFont()->setBold(true);
+        $sheet->getStyle('A3:L3')->getFont()->setBold(true);
         // Column widths: A (N°) fixed narrow, others auto
         $sheet->getColumnDimension('A')->setWidth(5);
-        foreach (range('B','K') as $col) {
+        foreach (range('B','L') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
         // Apply thin borders to all populated cells (after collection loaded). We assume max rows = collection count + 3 header rows
         $dataLastRow = $sheet->getHighestDataRow();
         $rowCount = max($dataLastRow, 3); // ensure at least header rows
-        $sheet->getStyle("A1:K{$rowCount}")->applyFromArray([
+        $sheet->getStyle("A1:L{$rowCount}")->applyFromArray([
             'borders' => [
                 'allBorders' => [
                     'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
@@ -84,7 +85,7 @@ abstract class BaseConsolidadoSheet implements FromCollection, WithHeadings, Wit
         }
         return [
             'A1' => ['alignment' => ['horizontal' => 'center']],
-            'A3:K3' => ['alignment' => ['horizontal' => 'center']],
+            'A3:L3' => ['alignment' => ['horizontal' => 'center']],
         ];
     }
 

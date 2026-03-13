@@ -20,7 +20,7 @@ class ConsolidadoDocentesSheet extends BaseConsolidadoSheet
     protected function queryRows(): array
     {
         $query = ProcesoDocente::query()
-            ->with(['docente.tipo','experienciaAdmision.maestro','local.localesMaestro','procesoFecha'])
+            ->with(['docente.tipo','experienciaAdmision.maestro','local.localesMaestro','procesoFecha','usuario'])
             // Join a la tabla docente para poder ordenar por sus apellidos/nombres
             ->leftJoin('docente', 'docente.doc_vcCodigo', '=', 'procesodocente.doc_vcCodigo')
             // Ajuste: profec_iCodigo pertenece a planilla, no a planillaDocente; filtramos sólo en la tabla planilla
@@ -64,6 +64,7 @@ class ConsolidadoDocentesSheet extends BaseConsolidadoSheet
                 'fecha_asignacion' => $r->procesoFecha?->profec_dFecha, // usar fecha del ProcesoFecha directamente
                 'credencial' => $r->prodoc_iCodigo, // credencial corresponde al código del registro proceso
                 'numero_planilla' => $r->pla_iNumero,
+                'usuario_asignador' => $r->usuario?->name ?? '',
             ];
         }
         return $out;

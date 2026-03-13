@@ -15,7 +15,7 @@ use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
-use Filament\Pages\Actions\Action;
+use Filament\Actions\Action;
 use Filament\Pages\Page;
 use Illuminate\Support\Collection;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
@@ -195,27 +195,20 @@ class DesasignarAlumno extends Page implements HasForms
         ]);
     }
 
+    public function desasignarAction(): Action
+    {
+        return Action::make('desasignar')
+            ->label('Desasignar')
+            ->color('danger')
+            ->requiresConfirmation()
+            ->modalHeading('Confirmar Desasignación')
+            ->modalDescription('¿Está seguro que desea desasignar al alumno?')
+            ->modalSubmitActionLabel('Sí, desasignar')
+            ->action(fn () => $this->desasignarAlumno());
+    }
+
     public function getActions(): array
     {
-        return [
-            Action::make('desasignar')
-                ->label('Desasignar')
-                ->color('danger')
-                ->modalHeading('Confirmar Desasignación')
-                ->modalDescription('¿Está seguro que desea desasignar al alumno?')
-                ->modalSubmitActionLabel('Sí, desasignar')
-                ->action(fn () => $this->desasignarAlumno())
-                ->visible(fn () => filled($this->asignacionActual)),
-        ];
-    }
-
-    public function getModalHeading(): string
-    {
-        return 'Confirmar Desasignación';
-    }
-
-    public function getModalContent(): string
-    {
-        return '¿Está seguro que desea desasignar al alumno?';
+        return [];
     }
 }

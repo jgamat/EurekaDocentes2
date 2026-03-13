@@ -18,7 +18,7 @@ use Filament\Forms\Form;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Support\Collection;
-use Filament\Pages\Actions\Action;
+use Filament\Actions\Action;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 
 class DesasignarDocente extends Page implements HasForms
@@ -160,14 +160,13 @@ class DesasignarDocente extends Page implements HasForms
             ->statePath('data');
     }
 
-    
 
     public function desasignarDocente()
     {
+        // ... (keep existing implementation)
         $asignacion = $this->asignacionActual;
         if (!$asignacion) {
             Notification::make()->title('No asignado')->body('El docente no está asignado en esta fecha.')->danger()->send();
-           
             return;
         }
         $user = auth()->user();
@@ -180,15 +179,14 @@ class DesasignarDocente extends Page implements HasForms
                 ->send();
             return;
         }
-    // Guardar IDs previos para refrescar tarjetas luego
-    $procesoFechaId = $asignacion->profec_iCodigo;
-    $localIdAnterior = $asignacion->loc_iCodigo;
-    $expAdmIdAnterior = $asignacion->expadm_iCodigo;
+        // Guardar IDs previos
+        $procesoFechaId = $asignacion->profec_iCodigo;
+        $localIdAnterior = $asignacion->loc_iCodigo;
+        $expAdmIdAnterior = $asignacion->expadm_iCodigo;
 
         $localCargo = LocalCargo::where('loc_iCodigo', $asignacion->loc_iCodigo ?? 0)
             ->where('expadm_iCodigo', $asignacion->expadm_iCodigo ?? 0)
             ->first();
-       
 
         $asignacion->update([
             'prodoc_iAsignacion' => false,
@@ -199,15 +197,12 @@ class DesasignarDocente extends Page implements HasForms
             'prodoc_dtFechaImpresion' => null,           
             'prodoc_iCredencial' => false,
             'user_idDesasignador' => auth()->id(),
-           
         ]);
 
-        
         if ($localCargo && $localCargo->loccar_iOcupado > 0) {
             $localCargo->decrement('loccar_iOcupado');
         }
 
-        // Disparar evento para refrescar tarjetas/tablas que escuchen el contexto
         if ($procesoFechaId && $localIdAnterior && $expAdmIdAnterior) {
             $this->dispatch(
                 'contextoActualizado',
@@ -223,35 +218,22 @@ class DesasignarDocente extends Page implements HasForms
             'proceso_fecha_id' => $this->data['proceso_fecha_id'] ?? null,
             'docente_id' => null,
         ]);
-        
+    }
+
+    public function desasignarAction(): Action
+    {
+        return Action::make('desasignar')
+            ->label('Desasignar')
+            ->color('danger')
+            ->requiresConfirmation()
+            ->modalHeading('Confirmar Desasignación')
+            ->modalDescription('¿Está seguro que desea desasignar al docente?')
+            ->modalSubmitActionLabel('Sí, desasignar')
+            ->action(fn () => $this->desasignarDocente());
     }
 
     public function getActions(): array
     {
-        return [
-            Action::make('desasignar')
-                ->label('Desasignar')
-                ->color('danger')
-                ->modalHeading('Confirmar Desasignación')
-                ->modalDescription('¿Está seguro que desea desasignar al docente?')
-                ->modalSubmitActionLabel('Sí, desasignar')
-                ->action(fn () => $this->desasignarDocente())
-                ->visible(fn () => filled($this->asignacionActual)),
-        ];
-    }
-
-    public function getModalHeading(): string
-    {
-        return 'Confirmar Desasignación';
-    }
-
-    public function getModalContent(): string
-    {
-        return '¿Está seguro que desea desasignar al docente?';
-    }
-
-   public function confirmarDesasignacion()
-    {
-        $this->showModal('confirmarDesasignacion');
+        return [];
     }
 }

@@ -20,7 +20,7 @@ class ConsolidadoAdministrativosSheet extends BaseConsolidadoSheet
     protected function queryRows(): array
     {
         $query = ProcesoAdministrativo::query()
-            ->with(['administrativo.tipo','experienciaAdmision.maestro','local.localesMaestro','procesoFecha'])
+            ->with(['administrativo.tipo','experienciaAdmision.maestro','local.localesMaestro','procesoFecha','usuario'])
             // Join a la tabla administrativo para ordenar por nombres
             ->leftJoin('administrativo', 'administrativo.adm_vcDni', '=', 'procesoadministrativo.adm_vcDni')
             // Ajuste: profec_iCodigo se filtra en planilla, no en planillaAdministrativo
@@ -63,6 +63,7 @@ class ConsolidadoAdministrativosSheet extends BaseConsolidadoSheet
                 'fecha_asignacion' => $r->procesoFecha?->profec_dFecha,
                 'credencial' => $r->proadm_iCodigo,
                 'numero_planilla' => $r->pla_iNumero,
+                'usuario_asignador' => $r->usuario?->name ?? '',
             ];
         }
         return $out;

@@ -36,10 +36,16 @@ class AppServiceProvider extends ServiceProvider
 
         $this->configureFilament();
 
-        // Share current context with all views
-        $ctx = $this->app->make(CurrentContext::class);
-        $ctx->ensureLoaded();
-        View::share('currentContext', $ctx);
+        // Share current context with all views (only in HTTP requests to avoid CLI/DB boot errors)
+        if (!$this->app->runningInConsole()) {
+            try {
+                $ctx = $this->app->make(CurrentContext::class);
+                $ctx->ensureLoaded();
+                View::share('currentContext', $ctx);
+            } catch (\Throwable $e) {
+                // Ignore DB connection errors during early boot
+            }
+        }
     }
 
     private function configurePolicies(): void
@@ -63,7 +69,7 @@ class AppServiceProvider extends ServiceProvider
 
     private function configureFilament(): void
     {
-        FilamentShield::prohibitDestructiveCommands($this->app->isProduction());
+        FilamentShield::prohibitDestructiveCommands($this->app->environment('production'));
 
         Table::configureUsing(fn (Table $table) => $table->paginationPageOptions([10, 25, 50]));
     }
