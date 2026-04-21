@@ -1,50 +1,53 @@
 <?php
 
-
 namespace App\Filament\Pages;
 
+use App\Models\Docente;
+use App\Models\LocalCargo;
 use App\Models\Proceso;
+use App\Models\ProcesoDocente;
 use App\Models\ProcesoFecha;
 use App\Support\CurrentContext;
 use App\Support\Traits\UsesGlobalContext;
-use Livewire\Attributes\On;
-use App\Models\Docente;
-use App\Models\ProcesoDocente;
-use App\Models\LocalCargo;
+use BezhanSalleh\FilamentShield\Traits\HasPageShield;
+use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
-use Filament\Forms\Form;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Schemas\Schema;
 use Illuminate\Support\Collection;
-use Filament\Actions\Action;
-use BezhanSalleh\FilamentShield\Traits\HasPageShield;
+use Livewire\Attributes\On;
 
 class DesasignarDocente extends Page implements HasForms
 {
-    use InteractsWithForms;
     use HasPageShield;
+    use InteractsWithForms;
     use UsesGlobalContext;
 
-    protected static ?string $navigationIcon = 'heroicon-o-user-minus';
-    protected static string $view = 'filament.pages.desasignar-docente';
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-user-minus';
+
+    protected string $view = 'filament.pages.desasignar-docente';
+
     protected static ?string $navigationLabel = 'Desasignar Docente';
-    protected static ?string $navigationGroup = 'Docentes';
+
+    protected static string|\UnitEnum|null $navigationGroup = 'Docentes';
 
     public ?array $data = [];
+
     // Asignación seleccionada persistente (evita depender de propiedad computada efímera)
     public ?ProcesoDocente $asignacionActual = null;
-    
+
     public function mount(): void
     {
-        $this->fillContextDefaults(['proceso_id','proceso_fecha_id']);
+        $this->fillContextDefaults(['proceso_id', 'proceso_fecha_id']);
     }
 
     #[On('context-changed')]
     public function onContextChanged(): void
     {
-        $this->applyContextFromGlobal(['proceso_id','proceso_fecha_id'], ['docente_id'], 'Se aplicó la Fecha y Proceso globales y se reinició la búsqueda de docente.');
+        $this->applyContextFromGlobal(['proceso_id', 'proceso_fecha_id'], ['docente_id'], 'Se aplicó la Fecha y Proceso globales y se reinició la búsqueda de docente.');
     }
 
     protected function refrescarAsignacionActual(): void
@@ -53,7 +56,7 @@ class DesasignarDocente extends Page implements HasForms
         $docenteCodigo = $data['docente_id'] ?? null;
         $fechaId = $data['proceso_fecha_id'] ?? null;
         // Fallback: si la fecha no está en el estado del formulario, usar la fecha global y reinyectarla
-        if (!$fechaId) {
+        if (! $fechaId) {
             $ctx = app(CurrentContext::class);
             $fechaId = $ctx->fechaId();
             if ($fechaId) {
@@ -65,7 +68,7 @@ class DesasignarDocente extends Page implements HasForms
             $this->asignacionActual = ProcesoDocente::with([
                 'local.localesMaestro',
                 'experienciaAdmision.maestro',
-                'procesoFecha'
+                'procesoFecha',
             ])
                 ->where('doc_vcCodigo', $docenteCodigo)
                 ->where('profec_iCodigo', $fechaId)
@@ -76,7 +79,7 @@ class DesasignarDocente extends Page implements HasForms
         }
     }
 
-    public function form(Form $form): Form
+    public function form(Schema $form): Schema
     {
         return $form
             ->schema([
@@ -98,7 +101,10 @@ class DesasignarDocente extends Page implements HasForms
                     ->label('2. Seleccione la Fecha Activa')
                     ->options(function (callable $get): Collection {
                         $procesoId = $get('proceso_id');
-                        if (!$procesoId) return collect();
+                        if (! $procesoId) {
+                            return collect();
+                        }
+
                         return ProcesoFecha::where('pro_iCodigo', $procesoId)
                             ->where('profec_iActivo', true)
                             ->pluck('profec_dFecha', 'profec_iCodigo');
@@ -107,7 +113,7 @@ class DesasignarDocente extends Page implements HasForms
                     ->reactive()
                     ->hidden()
                     ->dehydrated(true)
-                    ->default(fn()=> app(CurrentContext::class)->fechaId())
+                    ->default(fn () => app(CurrentContext::class)->fechaId())
                     ->afterStateUpdated(function ($state, callable $set, $livewire) {
                         $set('docente_id', null);
                         $livewire->resetValidation();
@@ -118,7 +124,10 @@ class DesasignarDocente extends Page implements HasForms
                     ->label('Buscar Docente')
                     ->searchable()
                     ->getSearchResultsUsing(function (string $search) {
-                        if (strlen(trim($search)) < 2) return [];
+                        if (strlen(trim($search)) < 2) {
+                            return [];
+                        }
+
                         return Docente::query()
                             ->where('doc_iActivo', 1)
                             ->searchPerson($search)
@@ -127,8 +136,8 @@ class DesasignarDocente extends Page implements HasForms
                             ->orderBy('doc_vcNombre')
                             ->limit(10)
                             ->get()
-                            ->mapWithKeys(fn($docente) => [
-                                $docente->doc_vcCodigo => "{$docente->nombre_completo} - {$docente->doc_vcDni} - {$docente->doc_vcCodigo}"
+                            ->mapWithKeys(fn ($docente) => [
+                                $docente->doc_vcCodigo => "{$docente->nombre_completo} - {$docente->doc_vcDni} - {$docente->doc_vcCodigo}",
                             ])
                             ->toArray();
                     })
@@ -139,7 +148,7 @@ class DesasignarDocente extends Page implements HasForms
                         $fechaId = $get('proceso_fecha_id');
                         if ($fechaId && $state) {
                             $this->refrescarAsignacionActual();
-                            if (!$this->asignacionActual) {
+                            if (! $this->asignacionActual) {
                                 Notification::make()
                                     ->title('No asignado')
                                     ->body('El docente no está asignado en esta fecha.')
@@ -160,23 +169,24 @@ class DesasignarDocente extends Page implements HasForms
             ->statePath('data');
     }
 
-
     public function desasignarDocente()
     {
         // ... (keep existing implementation)
         $asignacion = $this->asignacionActual;
-        if (!$asignacion) {
+        if (! $asignacion) {
             Notification::make()->title('No asignado')->body('El docente no está asignado en esta fecha.')->danger()->send();
+
             return;
         }
         $user = auth()->user();
         $esPlanilla = $user && method_exists($user, 'hasRole') ? $user->hasRole('Planilla') : false;
-        if ($asignacion->user_id !== auth()->id() && !$esPlanilla) {
+        if ($asignacion->user_id !== auth()->id() && ! $esPlanilla) {
             Notification::make()
                 ->title('No autorizado')
                 ->body('Solo el usuario que asignó o un usuario con rol Planilla puede desasignar.')
                 ->danger()
                 ->send();
+
             return;
         }
         // Guardar IDs previos
@@ -194,7 +204,7 @@ class DesasignarDocente extends Page implements HasForms
             'loc_iCodigo' => null,
             'expadm_iCodigo' => null,
             'prodoc_dtFechaAsignacion' => null,
-            'prodoc_dtFechaImpresion' => null,           
+            'prodoc_dtFechaImpresion' => null,
             'prodoc_iCredencial' => false,
             'user_idDesasignador' => auth()->id(),
         ]);
@@ -213,7 +223,7 @@ class DesasignarDocente extends Page implements HasForms
         }
 
         Notification::make()->title('Desasignación exitosa')->success()->send();
-         $this->form->fill([
+        $this->form->fill([
             'proceso_id' => $this->data['proceso_id'] ?? null,
             'proceso_fecha_id' => $this->data['proceso_fecha_id'] ?? null,
             'docente_id' => null,

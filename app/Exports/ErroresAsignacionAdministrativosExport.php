@@ -8,18 +8,16 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 
 class ErroresAsignacionAdministrativosExport implements FromCollection, WithHeadings
 {
-    public function __construct(private Collection $rows)
-    {
-    }
+    public function __construct(private Collection $rows) {}
 
     public function headings(): array
     {
-        return ['fila','codigo','dni','cargo','local','fecha','errores','warnings'];
+        return ['fila', 'codigo', 'dni', 'cargo', 'local', 'fecha', 'monto', 'errores', 'warnings'];
     }
 
     public function collection(): Collection
     {
-        return $this->rows->map(function($r){
+        return $this->rows->map(function ($r) {
             return [
                 'fila' => $r['row'],
                 'codigo' => $r['codigo'],
@@ -27,6 +25,7 @@ class ErroresAsignacionAdministrativosExport implements FromCollection, WithHead
                 'cargo' => $r['cargo'],
                 'local' => $r['local'],
                 'fecha' => $r['fecha'],
+                'monto' => $r['monto'] ?? null,
                 'errores' => implode('|', $r['errores']),
                 'warnings' => implode('|', $r['warnings']),
             ];

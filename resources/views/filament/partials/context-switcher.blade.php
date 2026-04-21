@@ -1,3 +1,3 @@
-<div class="ml-2">
+<div class="ctx-switcher-shell">
     @livewire('context-switcher')
 </div>

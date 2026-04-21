@@ -3,32 +3,33 @@
 namespace App\Livewire;
 
 use App\Models\ProcesoDocente;
+use Filament\Actions\Action;
+use Filament\Actions\Concerns\InteractsWithActions;
+use Filament\Actions\Contracts\HasActions;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
-use Filament\Tables\Actions\DeleteAction;
+use Filament\Notifications\Notification;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
-use Filament\Tables\Table;
 use Filament\Tables\Filters\Filter;
+use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\On;
 use Livewire\Component;
-use Filament\Tables\Actions\Action;
 
-class AsignadosDocenteTable extends Component implements HasForms, HasTable
-
+class AsignadosDocenteTable extends Component implements HasActions, HasForms, HasTable
 {
-    use InteractsWithForms, InteractsWithTable;
+    use InteractsWithActions, InteractsWithForms, InteractsWithTable;
 
     // Propiedades para guardar el contexto de la selección
     public ?int $procesoFechaId = null;
-    public ?int $localId = null;
-    public ?int $experienciaAdmisionId = null;
-    
 
-   
+    public ?int $localId = null;
+
+    public ?int $experienciaAdmisionId = null;
+
     #[On('contextoActualizado')]
     public function actualizarContexto($procesoFechaId, $localId, $experienciaAdmisionId): void
     {
@@ -37,14 +38,12 @@ class AsignadosDocenteTable extends Component implements HasForms, HasTable
         $this->experienciaAdmisionId = $experienciaAdmisionId;
     }
 
-   
-
-   public function table(Table $table): Table
+    public function table(Table $table): Table
     {
         return $table
             ->query(function () {
                 // 3. La consulta ahora depende de que los 3 IDs existan
-                if (!$this->procesoFechaId || !$this->localId || !$this->experienciaAdmisionId) {
+                if (! $this->procesoFechaId || ! $this->localId || ! $this->experienciaAdmisionId) {
                     return ProcesoDocente::query()->whereRaw('1 = 0');
                 }
 
@@ -59,7 +58,7 @@ class AsignadosDocenteTable extends Component implements HasForms, HasTable
                 // Restringir por rol del usuario asignador: solo mostrar registros asignados por usuarios
                 // que comparten algún rol con el usuario actual, excepto roles privilegiados
                 $user = auth()->user();
-                if ($user && !$user->hasAnyRole(['Economia', 'Info', 'super_admin'])) {
+                if ($user && ! $user->hasAnyRole(['Economia', 'Info', 'super_admin'])) {
                     $roles = $user->getRoleNames();
                     if ($roles && $roles->isNotEmpty()) {
                         $query->whereHas('usuario.roles', function ($q) use ($roles) {
@@ -70,8 +69,9 @@ class AsignadosDocenteTable extends Component implements HasForms, HasTable
                         $query->whereRaw('1 = 0');
                     }
                 }
+
                 return $query;
-                    
+
             })
             ->heading(fn () => 'Docentes Ya Asignados ('.$this->getAsignadosCount().')')
             ->striped()
@@ -93,12 +93,13 @@ class AsignadosDocenteTable extends Component implements HasForms, HasTable
                 Filter::make('dni')
                     ->label('DNI')
                     ->form([
-                        \Filament\Forms\Components\TextInput::make('dni')->label('DNI')->placeholder('Ej. 12345678'),
+                        TextInput::make('dni')->label('DNI')->placeholder('Ej. 12345678'),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
-                        if (!filled($data['dni'] ?? null)) {
+                        if (! filled($data['dni'] ?? null)) {
                             return $query;
                         }
+
                         return $query->whereHas('docente', function (Builder $q) use ($data) {
                             $q->where('doc_vcDni', 'like', '%'.$data['dni'].'%');
                         });
@@ -106,12 +107,13 @@ class AsignadosDocenteTable extends Component implements HasForms, HasTable
                 Filter::make('codigo')
                     ->label('Código')
                     ->form([
-                        \Filament\Forms\Components\TextInput::make('codigo')->label('Código')->placeholder('Código del docente'),
+                        TextInput::make('codigo')->label('Código')->placeholder('Código del docente'),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
-                        if (!filled($data['codigo'] ?? null)) {
+                        if (! filled($data['codigo'] ?? null)) {
                             return $query;
                         }
+
                         return $query->whereHas('docente', function (Builder $q) use ($data) {
                             $q->where('doc_vcCodigo', 'like', '%'.$data['codigo'].'%');
                         });
@@ -119,49 +121,50 @@ class AsignadosDocenteTable extends Component implements HasForms, HasTable
                 Filter::make('nombre')
                     ->label('Nombre')
                     ->form([
-                        \Filament\Forms\Components\TextInput::make('nombre')->label('Nombre')->placeholder('Parte del nombre'),
+                        TextInput::make('nombre')->label('Nombre')->placeholder('Parte del nombre'),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
-                        if (!filled($data['nombre'] ?? null)) {
+                        if (! filled($data['nombre'] ?? null)) {
                             return $query;
                         }
+
                         return $query->whereHas('docente', function (Builder $q) use ($data) {
                             $q->where('doc_vcNombre', 'like', '%'.$data['nombre'].'%')
-                              ->orWhere('doc_vcPaterno', 'like', '%'.$data['nombre'].'%')
-                              ->orWhere('doc_vcMaterno', 'like', '%'.$data['nombre'].'%');
+                                ->orWhere('doc_vcPaterno', 'like', '%'.$data['nombre'].'%')
+                                ->orWhere('doc_vcMaterno', 'like', '%'.$data['nombre'].'%');
                         });
                     }),
             ])
             ->actions([
 
                 Action::make('detalle')
-                ->label('Detalle')
-                ->icon('heroicon-o-eye')
-                ->modalHeading('Detalle de Asignación')
-                ->modalButton('Cerrar')
-                ->modalWidth('2xl')
-                ->mountUsing(function ($form, $record) {
-                    $form->fill([
-                        'docente' => $record->docente?->nombre_completo ?? '-',
-                        'dni' => $record->docente?->doc_vcDni ?? '-',
-                        'codigo' => $record->docente?->doc_vcCodigo ?? '-',
-                        'cargo' => $record->experienciaAdmision?->maestro?->expadmma_vcNombre ?? '-',
-                        'local' => $record->local?->localesMaestro?->locma_vcNombre ?? '-',
-                        'fecha' => $record->procesoFecha?->profec_dFecha ?? '-',
-                        'usuario' => $record->usuario?->name ?? '-',
-                        'fecha_asignacion' => $record->prodoc_dtFechaAsignacion ?? '-',
-                    ]);
-                })
-                ->form([
-                    \Filament\Forms\Components\TextInput::make('docente')->label('Docente')->disabled(),
-                    \Filament\Forms\Components\TextInput::make('dni')->label('DNI')->disabled(),
-                    \Filament\Forms\Components\TextInput::make('codigo')->label('Código')->disabled(),
-                    \Filament\Forms\Components\TextInput::make('cargo')->label('Cargo')->disabled(),
-                    \Filament\Forms\Components\TextInput::make('local')->label('Local')->disabled(),
-                    \Filament\Forms\Components\TextInput::make('fecha')->label('Fecha')->disabled(),
-                    \Filament\Forms\Components\TextInput::make('usuario')->label('Usuario Asignador')->disabled(),
-                    \Filament\Forms\Components\TextInput::make('fecha_asignacion')->label('Fecha de Asignación')->disabled(),
-                ]),
+                    ->label('Detalle')
+                    ->icon('heroicon-o-eye')
+                    ->modalHeading('Detalle de Asignación')
+                    ->modalButton('Cerrar')
+                    ->modalWidth('2xl')
+                    ->mountUsing(function ($form, $record) {
+                        $form->fill([
+                            'docente' => $record->docente?->nombre_completo ?? '-',
+                            'dni' => $record->docente?->doc_vcDni ?? '-',
+                            'codigo' => $record->docente?->doc_vcCodigo ?? '-',
+                            'cargo' => $record->experienciaAdmision?->maestro?->expadmma_vcNombre ?? '-',
+                            'local' => $record->local?->localesMaestro?->locma_vcNombre ?? '-',
+                            'fecha' => $record->procesoFecha?->profec_dFecha ?? '-',
+                            'usuario' => $record->usuario?->name ?? '-',
+                            'fecha_asignacion' => $record->prodoc_dtFechaAsignacion ?? '-',
+                        ]);
+                    })
+                    ->form([
+                        TextInput::make('docente')->label('Docente')->disabled(),
+                        TextInput::make('dni')->label('DNI')->disabled(),
+                        TextInput::make('codigo')->label('Código')->disabled(),
+                        TextInput::make('cargo')->label('Cargo')->disabled(),
+                        TextInput::make('local')->label('Local')->disabled(),
+                        TextInput::make('fecha')->label('Fecha')->disabled(),
+                        TextInput::make('usuario')->label('Usuario Asignador')->disabled(),
+                        TextInput::make('fecha_asignacion')->label('Fecha de Asignación')->disabled(),
+                    ]),
                 Action::make('desasignar')
                     ->label('Desasignar')
                     ->icon('heroicon-o-x-circle')
@@ -169,38 +172,39 @@ class AsignadosDocenteTable extends Component implements HasForms, HasTable
                     ->requiresConfirmation()
                     ->color('danger')
                     ->action(function ($record, $livewire) {
-                         if ($record->user_id !== auth()->id()) {
-                            \Filament\Notifications\Notification::make()
+                        if ($record->user_id !== auth()->id()) {
+                            Notification::make()
                                 ->title('Acción no permitida')
                                 ->body('Solo el usuario que realizó la asignación puede desasignar este registro.')
                                 ->danger()
                                 ->send();
+
                             return;
                         }
-                         $localCargo = $record->localCargo;
+                        $localCargo = $record->localCargo;
                         $record->update(['prodoc_iAsignacion' => false,
-                                        'prodoc_dtFechaDesasignacion' => now(),
-                                        'loc_iCodigo' => null,
-                                        'expadm_iCodigo' => null,
-                                        'prodoc_dtFechaAsignacion' => null]);
-                        
+                            'prodoc_dtFechaDesasignacion' => now(),
+                            'loc_iCodigo' => null,
+                            'expadm_iCodigo' => null,
+                            'prodoc_dtFechaAsignacion' => null]);
+
                         if ($localCargo && $localCargo->loccar_iOcupado > 0) {
                             $localCargo->decrement('loccar_iOcupado');
-                           
+
                         }
-                         $livewire->dispatch(
+                        $livewire->dispatch(
                             'contextoActualizado',
                             procesoFechaId: $this->procesoFechaId,
                             localId: $this->localId,
                             experienciaAdmisionId: $this->experienciaAdmisionId
                         );
-                }),
+                    }),
             ]);
     }
 
     protected function getAsignadosCount(): int
     {
-        if (!$this->procesoFechaId || !$this->localId || !$this->experienciaAdmisionId) {
+        if (! $this->procesoFechaId || ! $this->localId || ! $this->experienciaAdmisionId) {
             return 0;
         }
         $query = ProcesoDocente::query()
@@ -210,7 +214,7 @@ class AsignadosDocenteTable extends Component implements HasForms, HasTable
             ->where('prodoc_iAsignacion', true);
 
         $user = auth()->user();
-        if ($user && !$user->hasAnyRole(['Economia', 'Info', 'super_admin'])) {
+        if ($user && ! $user->hasAnyRole(['Economia', 'Info', 'super_admin'])) {
             $roles = $user->getRoleNames();
             if ($roles && $roles->isNotEmpty()) {
                 $query->whereHas('usuario.roles', function ($q) use ($roles) {
@@ -220,6 +224,7 @@ class AsignadosDocenteTable extends Component implements HasForms, HasTable
                 return 0;
             }
         }
+
         return $query->count();
     }
 

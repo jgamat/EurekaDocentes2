@@ -2,8 +2,8 @@
 
 namespace App\Policies;
 
-use App\Models\User;
 use App\Models\Administrativo;
+use App\Models\User;
 use Illuminate\Auth\Access\HandlesAuthorization;
 
 class AdministrativoPolicy
@@ -11,11 +11,25 @@ class AdministrativoPolicy
     use HandlesAuthorization;
 
     /**
+     * Accept both legacy permission keys and Shield v4 keys.
+     */
+    private function canAny(User $user, array $permissions): bool
+    {
+        foreach ($permissions as $permission) {
+            if ($user->can($permission)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Determine whether the user can view any models.
      */
     public function viewAny(User $user): bool
     {
-        return $user->can('view_any_administrativo');
+        return $this->canAny($user, ['view_any_administrativo', 'ViewAny:Administrativo']);
     }
 
     /**
@@ -23,7 +37,7 @@ class AdministrativoPolicy
      */
     public function view(User $user, Administrativo $administrativo): bool
     {
-        return $user->can('view_administrativo');
+        return $this->canAny($user, ['view_administrativo', 'View:Administrativo']);
     }
 
     /**
@@ -31,7 +45,7 @@ class AdministrativoPolicy
      */
     public function create(User $user): bool
     {
-        return $user->can('create_administrativo');
+        return $this->canAny($user, ['create_administrativo', 'Create:Administrativo']);
     }
 
     /**
@@ -39,7 +53,7 @@ class AdministrativoPolicy
      */
     public function update(User $user, Administrativo $administrativo): bool
     {
-        return $user->can('update_administrativo');
+        return $this->canAny($user, ['update_administrativo', 'Update:Administrativo']);
     }
 
     /**
@@ -47,7 +61,7 @@ class AdministrativoPolicy
      */
     public function delete(User $user, Administrativo $administrativo): bool
     {
-        return $user->can('delete_administrativo');
+        return $this->canAny($user, ['delete_administrativo', 'Delete:Administrativo']);
     }
 
     /**
@@ -55,7 +69,7 @@ class AdministrativoPolicy
      */
     public function deleteAny(User $user): bool
     {
-        return $user->can('delete_any_administrativo');
+        return $this->canAny($user, ['delete_any_administrativo', 'DeleteAny:Administrativo']);
     }
 
     /**
@@ -63,7 +77,7 @@ class AdministrativoPolicy
      */
     public function forceDelete(User $user, Administrativo $administrativo): bool
     {
-        return $user->can('force_delete_administrativo');
+        return $this->canAny($user, ['force_delete_administrativo', 'ForceDelete:Administrativo']);
     }
 
     /**
@@ -71,7 +85,7 @@ class AdministrativoPolicy
      */
     public function forceDeleteAny(User $user): bool
     {
-        return $user->can('force_delete_any_administrativo');
+        return $this->canAny($user, ['force_delete_any_administrativo', 'ForceDeleteAny:Administrativo']);
     }
 
     /**
@@ -79,7 +93,7 @@ class AdministrativoPolicy
      */
     public function restore(User $user, Administrativo $administrativo): bool
     {
-        return $user->can('restore_administrativo');
+        return $this->canAny($user, ['restore_administrativo', 'Restore:Administrativo']);
     }
 
     /**
@@ -87,7 +101,7 @@ class AdministrativoPolicy
      */
     public function restoreAny(User $user): bool
     {
-        return $user->can('restore_any_administrativo');
+        return $this->canAny($user, ['restore_any_administrativo', 'RestoreAny:Administrativo']);
     }
 
     /**
@@ -95,7 +109,7 @@ class AdministrativoPolicy
      */
     public function replicate(User $user, Administrativo $administrativo): bool
     {
-        return $user->can('replicate_administrativo');
+        return $this->canAny($user, ['replicate_administrativo', 'Replicate:Administrativo']);
     }
 
     /**
@@ -103,6 +117,6 @@ class AdministrativoPolicy
      */
     public function reorder(User $user): bool
     {
-        return $user->can('reorder_administrativo');
+        return $this->canAny($user, ['reorder_administrativo', 'Reorder:Administrativo']);
     }
 }

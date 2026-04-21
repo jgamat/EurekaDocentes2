@@ -39,7 +39,7 @@
 					<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Búsqueda</label>
 					<input type="text" wire:model.defer="q" placeholder="Código, DNI o Apellidos y Nombres" class="fi-input w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-800" />
 				</div>
-				<button type="button" wire:click="buscar" class="px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700">Buscar</button>
+				<button type="button" wire:click="buscar" class="px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 dark:bg-amber-300 dark:text-zinc-900 dark:hover:bg-amber-400">Buscar</button>
 			</div>
 		</div>
 

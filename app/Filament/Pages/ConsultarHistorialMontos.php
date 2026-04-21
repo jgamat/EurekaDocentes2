@@ -2,80 +2,80 @@
 
 namespace App\Filament\Pages;
 
+use App\Exports\GenericSimpleArrayExport;
 use App\Models\CargoMontoHistorial;
 use App\Models\ExperienciaAdmision;
-use App\Models\ExperienciaAdmisionMaestro;
 use App\Models\User;
-use Filament\Pages\Page;
-use Filament\Tables\Contracts\HasTable;
-use Filament\Tables\Concerns\InteractsWithTable;
-use Filament\Tables\Table;
-use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Columns\BadgeColumn;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\DatePicker;
-use Filament\Tables\Filters\Filter;
-use Filament\Tables\Filters\SelectFilter;
-use Filament\Tables\Filters\TernaryFilter;
-use Filament\Tables\Filters\Indicator;
-use Filament\Tables\Filters\Layout; // placeholder in case of layout custom
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Carbon;
-use Filament\Tables\Enums\FiltersLayout;
-use Filament\Notifications\Notification;
-use Filament\Tables\Actions\Action;
-use Illuminate\Support\Facades\DB;
-use Maatwebsite\Excel\Facades\Excel;
-use Filament\Tables\Filters\Components\DatePicker as DateFilterDatePicker;
-use Filament\Tables\Filters\Components\Select as DateFilterSelect;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
+use Filament\Actions\Action;
+use Filament\Forms\Components\DatePicker;
+use Filament\Notifications\Notification;
+use Filament\Pages\Page;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Concerns\InteractsWithTable;
+use Filament\Tables\Contracts\HasTable; // placeholder in case of layout custom
+use Filament\Tables\Filters\Filter;
+use Filament\Tables\Filters\Layout;
+use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Maatwebsite\Excel\Facades\Excel;
 
 class ConsultarHistorialMontos extends Page implements HasTable
 {
-    use InteractsWithTable;
     use HasPageShield;
+    use InteractsWithTable;
 
-    protected static ?string $navigationIcon = 'heroicon-o-clock';
-    protected static ?string $navigationGroup = 'Administración de Locales';
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-clock';
+
+    protected static string|\UnitEnum|null $navigationGroup = 'Administración de Locales';
+
     protected static ?string $title = 'Historial de Montos';
-    protected static string $view = 'filament.pages.consultar-historial-montos';
+
+    protected string $view = 'filament.pages.consultar-historial-montos';
 
     public ?string $fDesde = null;
+
     public ?string $fHasta = null;
+
     public ?int $fUsuario = null;
+
     public ?int $fCargo = null; // instancia cargo id
+
     public ?int $fCargoMaestro = null; // maestro id
+
     public ?string $fArchivo = null;
 
     protected function getTableQuery(): Builder
     {
-        $q = CargoMontoHistorial::query()->with(['cargo.maestro','usuario']);
+        $q = CargoMontoHistorial::query()->with(['cargo.maestro', 'usuario']);
         if ($this->fDesde) {
-            $q->whereDate('aplicado_en','>=',$this->fDesde);
+            $q->whereDate('aplicado_en', '>=', $this->fDesde);
         }
         if ($this->fHasta) {
-            $q->whereDate('aplicado_en','<=',$this->fHasta);
+            $q->whereDate('aplicado_en', '<=', $this->fHasta);
         }
         if ($this->fUsuario) {
-            $q->where('user_id',$this->fUsuario);
+            $q->where('user_id', $this->fUsuario);
         }
         if ($this->fCargo) {
-            $q->where('expadm_iCodigo',$this->fCargo);
+            $q->where('expadm_iCodigo', $this->fCargo);
         }
         if ($this->fCargoMaestro) {
-            $ids = ExperienciaAdmision::where('expadmma_iCodigo',$this->fCargoMaestro)->pluck('expadm_iCodigo');
-            $q->whereIn('expadm_iCodigo',$ids);
+            $ids = ExperienciaAdmision::where('expadmma_iCodigo', $this->fCargoMaestro)->pluck('expadm_iCodigo');
+            $q->whereIn('expadm_iCodigo', $ids);
         }
         if ($this->fArchivo) {
-            $q->where('archivo_original','like','%'.$this->fArchivo.'%');
+            $q->where('archivo_original', 'like', '%'.$this->fArchivo.'%');
         }
+
         return $q->orderByDesc('aplicado_en');
     }
 
     public function table(Table $table): Table
     {
         return $table
-            ->query(fn()=> $this->getTableQuery())
+            ->query(fn () => $this->getTableQuery())
             ->columns([
                 TextColumn::make('aplicado_en')
                     ->label('Aplicado')
@@ -99,9 +99,9 @@ class ConsultarHistorialMontos extends Page implements HasTable
                     ->alignRight(),
                 TextColumn::make('diferencia')
                     ->label('Δ Dif')
-                    ->state(fn($record)=> $record->diferencia)
-                    ->formatStateUsing(fn($state)=> $state !== null ? number_format($state,2) : null)
-                    ->color(fn($state)=> $state > 0 ? 'success' : ($state < 0 ? 'danger' : 'gray'))
+                    ->state(fn ($record) => $record->diferencia)
+                    ->formatStateUsing(fn ($state) => $state !== null ? number_format($state, 2) : null)
+                    ->color(fn ($state) => $state > 0 ? 'success' : ($state < 0 ? 'danger' : 'gray'))
                     ->alignRight(),
                 TextColumn::make('usuario.name')
                     ->label('Usuario')
@@ -116,49 +116,50 @@ class ConsultarHistorialMontos extends Page implements HasTable
                     ->badge()
                     ->color('primary'),
             ])
-            ->defaultSort('aplicado_en','desc')
+            ->defaultSort('aplicado_en', 'desc')
             ->filters([
                 Filter::make('rango_fechas')
                     ->form([
                         DatePicker::make('desde')->label('Desde'),
                         DatePicker::make('hasta')->label('Hasta'),
                     ])
-                    ->query(function(Builder $query, array $data){
-                        if($data['desde'] ?? null) {
-                            $query->whereDate('aplicado_en','>=',$data['desde']);
+                    ->query(function (Builder $query, array $data) {
+                        if ($data['desde'] ?? null) {
+                            $query->whereDate('aplicado_en', '>=', $data['desde']);
                             $this->fDesde = $data['desde'];
                         }
-                        if($data['hasta'] ?? null) {
-                            $query->whereDate('aplicado_en','<=',$data['hasta']);
+                        if ($data['hasta'] ?? null) {
+                            $query->whereDate('aplicado_en', '<=', $data['hasta']);
                             $this->fHasta = $data['hasta'];
                         }
                     }),
                 SelectFilter::make('user_id')
                     ->label('Usuario')
-                    ->options(fn()=> User::query()->orderBy('name')->pluck('name','id')),
+                    ->options(fn () => User::query()->orderBy('name')->pluck('name', 'id')),
                 SelectFilter::make('expadm_iCodigo')
                     ->label('Cargo')
-                    ->options(fn()=> ExperienciaAdmision::with('maestro')->orderBy('expadm_iCodigo')->limit(500)->get()->mapWithKeys(fn($c)=> [$c->expadm_iCodigo => ($c->expadm_iCodigo.' - '.($c->maestro?->expadmma_vcNombre ?? ''))]))
+                    ->options(fn () => ExperienciaAdmision::with('maestro')->orderBy('expadm_iCodigo')->limit(500)->get()->mapWithKeys(fn ($c) => [$c->expadm_iCodigo => ($c->expadm_iCodigo.' - '.($c->maestro?->expadmma_vcNombre ?? ''))])),
             ])
             ->paginated(true)
             ->defaultPaginationPageOption(25)
-            ->paginationPageOptions([25,50,100])
+            ->paginationPageOptions([25, 50, 100])
             ->headerActions([
                 Action::make('exportar')
                     ->label('Exportar Excel')
                     ->icon('heroicon-o-arrow-down-tray')
-                    ->action(fn()=> $this->exportar())
+                    ->action(fn () => $this->exportar()),
             ]);
     }
 
     protected function exportar()
     {
         $records = $this->getTableQuery()->limit(20000)->get();
-        if($records->isEmpty()) {
+        if ($records->isEmpty()) {
             Notification::make()->title('Sin datos para exportar')->warning()->send();
+
             return null;
         }
-        $rows = $records->map(function($r){
+        $rows = $records->map(function ($r) {
             return [
                 'aplicado_en' => $r->aplicado_en?->format('Y-m-d H:i:s'),
                 'codigo_cargo' => $r->expadm_iCodigo,
@@ -173,6 +174,7 @@ class ConsultarHistorialMontos extends Page implements HasTable
             ];
         });
         $filename = 'historial_montos_'.now()->format('Ymd_His').'.xlsx';
-        return Excel::download(new \App\Exports\GenericSimpleArrayExport($rows, 'Historial de Montos'), $filename);
+
+        return Excel::download(new GenericSimpleArrayExport($rows, 'Historial de Montos'), $filename);
     }
 }

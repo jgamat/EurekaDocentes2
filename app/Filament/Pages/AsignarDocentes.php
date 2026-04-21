@@ -3,52 +3,56 @@
 namespace App\Filament\Pages;
 
 use App\Models\Docente;
-use App\Models\LocalCargo;
-use App\Models\Locales;
 use App\Models\ExperienciaAdmision;
 use App\Models\ExperienciaAdmisionMaestro;
+use App\Models\LocalCargo;
+use App\Models\Locales;
 use App\Models\ProcesoDocente;
 use App\Models\ProcesoFecha;
 use App\Support\CurrentContext;
 use App\Support\Traits\UsesGlobalContext;
-use Carbon\Carbon;
-use Filament\Forms\Components\Placeholder;
+use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
-use Filament\Forms\Form;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\DB;
+use Filament\Schemas\Schema;
 use Illuminate\Support\Collection;
-use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Hidden;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\On;
-use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 
 class AsignarDocentes extends Page implements HasForms
 {
+    use HasPageShield;
     use InteractsWithForms;
-    use HasPageShield;   
     use UsesGlobalContext;
-    protected static ?string $navigationIcon = 'heroicon-o-user-plus';
-    protected static string $view = 'filament.pages.asignar-docentes';
+
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-user-plus';
+
+    protected string $view = 'filament.pages.asignar-docentes';
+
     protected static ?string $navigationLabel = 'Asignar Docentes';
-    protected static ?string $navigationGroup = 'Docentes';
+
+    protected static string|\UnitEnum|null $navigationGroup = 'Docentes';
+
     public ?LocalCargo $plazaSeleccionada = null;
 
     public ?array $data = [];
+
     // Bandera para evitar que el afterStateUpdated de la fecha limpie Local/Cargo
     protected bool $suppressFechaReset = false;
+
     #[On('contextoActualizado')]
     public function actualizarPlazaSeleccionada($procesoFechaId, $localId, $experienciaAdmisionId)
     {
-        $this->plazaSeleccionada = \App\Models\LocalCargo::where('loc_iCodigo', $localId)
+        $this->plazaSeleccionada = LocalCargo::where('loc_iCodigo', $localId)
             ->where('expadm_iCodigo', $experienciaAdmisionId)
             ->first();
     }
-    public function mount(): void {
+
+    public function mount(): void
+    {
         // Inicializar usando el contexto global
         $this->fillContextDefaults(['proceso_fecha_id']);
         // Rehidratar inmediatamente la fecha oculta desde CurrentContext
@@ -80,9 +84,8 @@ class AsignarDocentes extends Page implements HasForms
             ->info()
             ->send();
     }
-    
 
-    public function form(Form $form): Form
+    public function form(Schema $form): Schema
     {
         return $form
             ->schema([
@@ -96,11 +99,15 @@ class AsignarDocentes extends Page implements HasForms
                     ->reactive()
                     ->hidden()
                     ->dehydrated(true)
-                    ->default(fn()=> app(CurrentContext::class)->fechaId())
+                    ->default(fn () => app(CurrentContext::class)->fechaId())
                     ->afterStateUpdated(function ($state, callable $get, callable $set, $old) {
                         // Evitar limpiar Local/Cargo cuando el cambio de fecha es programático o no hubo cambio real
-                        if ($this->suppressFechaReset) { return; }
-                        if ((string)$old === (string)$state) { return; }
+                        if ($this->suppressFechaReset) {
+                            return;
+                        }
+                        if ((string) $old === (string) $state) {
+                            return;
+                        }
                         $set('local_id', null);
                         $set('experiencia_admision_id', null);
                         $this->plazaSeleccionada = null;
@@ -117,9 +124,9 @@ class AsignarDocentes extends Page implements HasForms
 
                 Select::make('local_id')
                     ->label('2. Seleccione el Local')
-                    ->options(function (callable $get): \Illuminate\Support\Collection {
+                    ->options(function (callable $get): Collection {
                         $fechaId = $get('proceso_fecha_id');
-                        if (!$fechaId) {
+                        if (! $fechaId) {
                             return collect();
                         }
 
@@ -169,7 +176,7 @@ class AsignarDocentes extends Page implements HasForms
                     ->options(function (callable $get): Collection {
                         $fechaId = $get('proceso_fecha_id');
                         $localId = $get('local_id');
-                        if (!$fechaId || !$localId) {
+                        if (! $fechaId || ! $localId) {
                             return collect();
                         }
 
@@ -189,7 +196,7 @@ class AsignarDocentes extends Page implements HasForms
                         $allowedIds = $allowed->pluck('expadmma_iCodigo');
 
                         // Solo cargos ya vinculados al local seleccionado y a la fecha seleccionada (vía localcargo)
-                        $cargos = \App\Models\ExperienciaAdmision::query()
+                        $cargos = ExperienciaAdmision::query()
                             ->select('experienciaadmision.expadm_iCodigo', 'em.expadmma_vcNombre')
                             ->join('localcargo', 'localcargo.expadm_iCodigo', '=', 'experienciaadmision.expadm_iCodigo')
                             ->join('experienciaadmisionMaestro as em', 'em.expadmma_iCodigo', '=', 'experienciaadmision.expadmma_iCodigo')
@@ -210,8 +217,9 @@ class AsignarDocentes extends Page implements HasForms
                     ->reactive()
                     ->afterStateUpdated(function ($state, callable $get) {
                         $localId = $get('local_id');
-                        if (!$localId || !$state) {
+                        if (! $localId || ! $state) {
                             $this->plazaSeleccionada = null;
+
                             return;
                         }
                         $this->plazaSeleccionada = LocalCargo::where('loc_iCodigo', $localId)
@@ -225,187 +233,199 @@ class AsignarDocentes extends Page implements HasForms
                         );
                     }),
 
-                    Select::make('docente_id')
-                        ->label('Buscar y Asignar Docente')
-                        ->searchable()
-                        ->placeholder('Escribe nombre, DNI o código')
-                        ->helperText('Primero seleccione Local y Cargo; luego elija el docente para asignar.')
-                        ->disabled(fn(callable $get) => empty($get('local_id')) || empty($get('experiencia_admision_id')))
-                        ->getSearchResultsUsing(function (string $search): array {
-                            if (strlen(trim($search)) < 2) return [];
-                            return Docente::query()
-                                ->where('doc_iActivo', 1)
-                                ->searchPerson($search)
-                                ->orderBy('doc_vcPaterno')
-                                ->orderBy('doc_vcMaterno')
-                                ->orderBy('doc_vcNombre')
-                                ->limit(25)
-                                ->get()
-                                ->mapWithKeys(fn (Docente $d) => [
-                                    $d->doc_vcCodigo => $d->nombre_completo.' - '.$d->doc_vcDni.' - '.$d->doc_vcCodigo,
-                                ])
-                                ->toArray();
-                        })
-                        ->getOptionLabelUsing(function ($value): ?string {
-                            if (!$value) return null;
-                            $d = Docente::where('doc_vcCodigo', $value)->first();
-                            return $d ? ($d->nombre_completo.' - '.$d->doc_vcDni.' - '.$d->doc_vcCodigo) : $value;
-                        })
-                        ->reactive()
-                        ->afterStateUpdated(function ($state) {
-                            if ($state) { $this->asignarDocenteDirecto(); }
-                        }),
+                Select::make('docente_id')
+                    ->label('Buscar y Asignar Docente')
+                    ->searchable()
+                    ->placeholder('Escribe nombre, DNI o código')
+                    ->helperText('Primero seleccione Local y Cargo; luego elija el docente para asignar.')
+                    ->disabled(fn (callable $get) => empty($get('local_id')) || empty($get('experiencia_admision_id')))
+                    ->getSearchResultsUsing(function (string $search): array {
+                        if (strlen(trim($search)) < 2) {
+                            return [];
+                        }
+
+                        return Docente::query()
+                            ->where('doc_iActivo', 1)
+                            ->searchPerson($search)
+                            ->orderBy('doc_vcPaterno')
+                            ->orderBy('doc_vcMaterno')
+                            ->orderBy('doc_vcNombre')
+                            ->limit(25)
+                            ->get()
+                            ->mapWithKeys(fn (Docente $d) => [
+                                $d->doc_vcCodigo => $d->nombre_completo.' - '.$d->doc_vcDni.' - '.$d->doc_vcCodigo,
+                            ])
+                            ->toArray();
+                    })
+                    ->getOptionLabelUsing(function ($value): ?string {
+                        if (! $value) {
+                            return null;
+                        }
+                        $d = Docente::where('doc_vcCodigo', $value)->first();
+
+                        return $d ? ($d->nombre_completo.' - '.$d->doc_vcDni.' - '.$d->doc_vcCodigo) : $value;
+                    })
+                    ->reactive()
+                    ->afterStateUpdated(function ($state) {
+                        if ($state) {
+                            $this->asignarDocenteDirecto();
+                        }
+                    }),
             ])
             ->statePath('data');
     }
 
- 
     public function asignarDocenteDirecto(): void
-{
-    $data = $this->form->getState();
-    // Reforzar integridad del contexto: fallback desde CurrentContext si falta la fecha
-    $ctx = app(CurrentContext::class);
-    $fechaId = $data['proceso_fecha_id'] ?? $ctx->fechaId();
-    if (!isset($data['proceso_fecha_id'])) {
-        // Evitar disparar afterStateUpdated del select de fecha (que limpia Local/Cargo)
-        // actualizando directamente el estado base del formulario.
+    {
+        $data = $this->form->getState();
+        // Reforzar integridad del contexto: fallback desde CurrentContext si falta la fecha
+        $ctx = app(CurrentContext::class);
+        $fechaId = $data['proceso_fecha_id'] ?? $ctx->fechaId();
+        if (! isset($data['proceso_fecha_id'])) {
+            // Evitar disparar afterStateUpdated del select de fecha (que limpia Local/Cargo)
+            // actualizando directamente el estado base del formulario.
+            $this->suppressFechaReset = true;
+            $this->data['proceso_fecha_id'] = $fechaId;
+            $data['proceso_fecha_id'] = $fechaId;
+        }
+        $codigo = $data['docente_id'] ?? null;
+        $docente = $codigo ? Docente::where('doc_vcCodigo', $codigo)->first() : null;
+        if (! $docente) {
+            Notification::make()
+                ->title('Error')
+                ->body('No se encontró el docente seleccionado.')
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        $currentState = $this->form->getState();
+        $newState = array_merge($currentState, [
+            'docente_id' => $docente->doc_vcCodigo,
+        ]);
+
+        // Validaciones
+        if (
+            empty($fechaId) ||
+            empty($newState['local_id']) ||
+            empty($newState['experiencia_admision_id']) ||
+            empty($docente->doc_vcCodigo)
+        ) {
+            Notification::make()
+                ->title('Error de Formulario')
+                ->body('Debes seleccionar Fecha, Local y Cargo antes de asignar un docente.')
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        // Buscar plaza
+        $plaza = LocalCargo::where('loc_iCodigo', $newState['local_id'])
+            ->where('expadm_iCodigo', $newState['experiencia_admision_id'])
+            ->first();
+
+        if (! $plaza) {
+            Notification::make()
+                ->title('Error')
+                ->body('No se encontró la plaza seleccionada.')
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        // Validación: el docente no debe tener ya una asignación activa (prodoc_iAsignacion=1) en esta fecha (sin importar local/cargo)
+        $asignacionActivaMismaFecha = ProcesoDocente::where('profec_iCodigo', $fechaId)
+            ->where('doc_vcCodigo', $docente->doc_vcCodigo)
+            ->where('prodoc_iAsignacion', 1)
+            ->first();
+
+        if ($asignacionActivaMismaFecha) {
+            $locNombre = optional($asignacionActivaMismaFecha->local?->localesMaestro)->locma_vcNombre ?? 'Local desconocido';
+            $cargoNombre = optional($asignacionActivaMismaFecha->experienciaAdmision?->maestro)->expadmma_vcNombre ?? 'Cargo desconocido';
+            Notification::make()
+                ->title('Asignación Bloqueada')
+                ->body("El docente {$docente->nombre_completo} ya está asignado en la fecha seleccionada ({$locNombre} - {$cargoNombre}).")
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        // Validación de vacantes
+        if ($plaza->loccar_iOcupado >= $plaza->loccar_iVacante) {
+            Notification::make()
+                ->title('Asignación Fallida')
+                ->body('No quedan vacantes para esta plaza.')
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        // Buscar si existe un registro previo (inactivo) de este docente en la misma fecha para reactivarlo
+        $asignacionPendiente = ProcesoDocente::where('profec_iCodigo', $fechaId)
+            ->where('doc_vcCodigo', $docente->doc_vcCodigo)
+            ->where('prodoc_iAsignacion', 0)
+            ->latest('prodoc_id')
+            ->first();
+
+        DB::transaction(function () use ($plaza, $docente, $asignacionPendiente, $fechaId) {
+            $ip = request()->header('X-Forwarded-For') ? explode(',', request()->header('X-Forwarded-For'))[0] : request()->ip();
+            if ($asignacionPendiente) {
+                // Actualizar el registro existente
+                $asignacionPendiente->update([
+                    'loc_iCodigo' => $plaza->loc_iCodigo,
+                    'expadm_iCodigo' => $plaza->expadm_iCodigo,
+                    'prodoc_iAsignacion' => 1,
+                    'prodoc_dtFechaAsignacion' => now(),
+                    'user_id' => auth()->id(),
+                    'prodoc_vcIpAsignacion' => $ip,
+                ]);
+            } else {
+                // Inserción normal
+                ProcesoDocente::create([
+                    'profec_iCodigo' => $fechaId,
+                    'loc_iCodigo' => $plaza->loc_iCodigo,
+                    'expadm_iCodigo' => $plaza->expadm_iCodigo,
+                    'doc_vcCodigo' => $docente->doc_vcCodigo,
+                    'prodoc_iAsignacion' => 1,
+                    'prodoc_dtFechaAsignacion' => now(),
+                    'user_id' => auth()->id(),
+                    'prodoc_vcIpAsignacion' => $ip,
+                ]);
+            }
+            $plaza->increment('loccar_iOcupado');
+        });
+
+        Notification::make()
+            ->title('¡Docente Asignado Correctamente!')
+            ->success()
+            ->send();
+
+        // Refresca la plaza seleccionada y la tabla de asignados
+        $this->plazaSeleccionada = $plaza->refresh();
+        $this->dispatch(
+            'contextoActualizado',
+            procesoFechaId: $fechaId,
+            localId: $plaza->loc_iCodigo,
+            experienciaAdmisionId: $plaza->expadm_iCodigo
+        );
+
+        // Mantener Local y Cargo seleccionados; solo limpiar el campo de búsqueda de docente.
+        // Evitar efectos colaterales de form->fill sobre selects reactivos
+        $this->suppressFechaReset = true;
+        $this->data['local_id'] = $plaza->loc_iCodigo;
+        $this->data['experiencia_admision_id'] = $plaza->expadm_iCodigo;
+        $this->data['docente_id'] = null;
+        $this->suppressFechaReset = false;
+        // Asegurar que la fecha global permanezca en el state tras el ciclo de asignación
         $this->suppressFechaReset = true;
         $this->data['proceso_fecha_id'] = $fechaId;
-        $data['proceso_fecha_id'] = $fechaId;
+        $this->suppressFechaReset = false;
+        // Rehabilitar el reset normal de fecha para futuros cambios del usuario
+        $this->suppressFechaReset = false;
     }
-    $codigo = $data['docente_id'] ?? null;
-    $docente = $codigo ? Docente::where('doc_vcCodigo', $codigo)->first() : null;
-    if (!$docente) {
-        Notification::make()
-            ->title('Error')
-            ->body('No se encontró el docente seleccionado.')
-            ->danger()
-            ->send();
-        return;
-    }
-
-    $currentState = $this->form->getState();
-    $newState = array_merge($currentState, [
-        'docente_id' => $docente->doc_vcCodigo,
-    ]);
-
-    // Validaciones
-    if (
-        empty($fechaId) ||
-        empty($newState['local_id']) ||
-        empty($newState['experiencia_admision_id']) ||
-        empty($docente->doc_vcCodigo)
-    ) {
-        Notification::make()
-            ->title('Error de Formulario')
-            ->body('Debes seleccionar Fecha, Local y Cargo antes de asignar un docente.')
-            ->danger()
-            ->send();
-        return;
-    }
-
-    // Buscar plaza
-    $plaza = LocalCargo::where('loc_iCodigo', $newState['local_id'])
-        ->where('expadm_iCodigo', $newState['experiencia_admision_id'])
-        ->first();
-
-    if (!$plaza) {
-        Notification::make()
-            ->title('Error')
-            ->body('No se encontró la plaza seleccionada.')
-            ->danger()
-            ->send();
-        return;
-    }
-
-    // Validación: el docente no debe tener ya una asignación activa (prodoc_iAsignacion=1) en esta fecha (sin importar local/cargo)
-    $asignacionActivaMismaFecha = ProcesoDocente::where('profec_iCodigo', $fechaId)
-        ->where('doc_vcCodigo', $docente->doc_vcCodigo)
-        ->where('prodoc_iAsignacion', 1)
-        ->first();
-
-    if ($asignacionActivaMismaFecha) {
-        $locNombre = optional($asignacionActivaMismaFecha->local?->localesMaestro)->locma_vcNombre ?? 'Local desconocido';
-        $cargoNombre = optional($asignacionActivaMismaFecha->experienciaAdmision?->maestro)->expadmma_vcNombre ?? 'Cargo desconocido';
-        Notification::make()
-            ->title('Asignación Bloqueada')
-            ->body("El docente {$docente->nombre_completo} ya está asignado en la fecha seleccionada ({$locNombre} - {$cargoNombre}).")
-            ->danger()
-            ->send();
-        return;
-    }
-
-    // Validación de vacantes
-    if ($plaza->loccar_iOcupado >= $plaza->loccar_iVacante) {
-        Notification::make()
-            ->title('Asignación Fallida')
-            ->body("No quedan vacantes para esta plaza.")
-            ->danger()
-            ->send();
-        return;
-    }
-
-    // Buscar si existe un registro previo (inactivo) de este docente en la misma fecha para reactivarlo
-    $asignacionPendiente = ProcesoDocente::where('profec_iCodigo', $fechaId)
-        ->where('doc_vcCodigo', $docente->doc_vcCodigo)
-        ->where('prodoc_iAsignacion', 0)
-        ->latest('prodoc_id')
-        ->first();
-
-    DB::transaction(function () use ($plaza, $docente, $newState, $asignacionPendiente, $fechaId) {
-    $ip = request()->header('X-Forwarded-For') ? explode(',', request()->header('X-Forwarded-For'))[0] : request()->ip();
-        if ($asignacionPendiente) {
-            // Actualizar el registro existente
-            $asignacionPendiente->update([
-                'loc_iCodigo' => $plaza->loc_iCodigo,
-                'expadm_iCodigo' => $plaza->expadm_iCodigo,
-                'prodoc_iAsignacion' => 1,
-                'prodoc_dtFechaAsignacion' => now(),
-                'user_id' => auth()->id(),
-        'prodoc_vcIpAsignacion' => $ip,
-            ]);
-        } else {
-            // Inserción normal
-            ProcesoDocente::create([
-                'profec_iCodigo' => $fechaId,
-                'loc_iCodigo' => $plaza->loc_iCodigo,
-                'expadm_iCodigo' => $plaza->expadm_iCodigo,
-                'doc_vcCodigo' => $docente->doc_vcCodigo,
-                'prodoc_iAsignacion' => 1,
-                'prodoc_dtFechaAsignacion' => now(),
-                'user_id' => auth()->id(),
-        'prodoc_vcIpAsignacion' => $ip,
-            ]);
-        }
-        $plaza->increment('loccar_iOcupado');
-    });
-
-    Notification::make()
-        ->title('¡Docente Asignado Correctamente!')
-        ->success()
-        ->send();
-
-    // Refresca la plaza seleccionada y la tabla de asignados
-    $this->plazaSeleccionada = $plaza->refresh();
-    $this->dispatch(
-        'contextoActualizado',
-        procesoFechaId: $fechaId,
-        localId: $plaza->loc_iCodigo,
-        experienciaAdmisionId: $plaza->expadm_iCodigo
-    );
-
-    // Mantener Local y Cargo seleccionados; solo limpiar el campo de búsqueda de docente.
-    // Evitar efectos colaterales de form->fill sobre selects reactivos
-    $this->suppressFechaReset = true;
-    $this->data['local_id'] = $plaza->loc_iCodigo;
-    $this->data['experiencia_admision_id'] = $plaza->expadm_iCodigo;
-    $this->data['docente_id'] = null;
-    $this->suppressFechaReset = false;
-    // Asegurar que la fecha global permanezca en el state tras el ciclo de asignación
-    $this->suppressFechaReset = true;
-    $this->data['proceso_fecha_id'] = $fechaId;
-    $this->suppressFechaReset = false;
-    // Rehabilitar el reset normal de fecha para futuros cambios del usuario
-    $this->suppressFechaReset = false;
-}
 }

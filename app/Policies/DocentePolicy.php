@@ -2,8 +2,8 @@
 
 namespace App\Policies;
 
-use App\Models\User;
 use App\Models\Docente;
+use App\Models\User;
 use Illuminate\Auth\Access\HandlesAuthorization;
 
 class DocentePolicy
@@ -11,11 +11,25 @@ class DocentePolicy
     use HandlesAuthorization;
 
     /**
+     * Accept both legacy permission keys and Shield v4 keys.
+     */
+    private function canAny(User $user, array $permissions): bool
+    {
+        foreach ($permissions as $permission) {
+            if ($user->can($permission)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Determine whether the user can view any models.
      */
     public function viewAny(User $user): bool
     {
-        return $user->can('view_any_docente');
+        return $this->canAny($user, ['view_any_docente', 'ViewAny:Docente']);
     }
 
     /**
@@ -23,7 +37,7 @@ class DocentePolicy
      */
     public function view(User $user, Docente $docente): bool
     {
-        return $user->can('view_docente');
+        return $this->canAny($user, ['view_docente', 'View:Docente']);
     }
 
     /**
@@ -31,7 +45,7 @@ class DocentePolicy
      */
     public function create(User $user): bool
     {
-        return $user->can('create_docente');
+        return $this->canAny($user, ['create_docente', 'Create:Docente']);
     }
 
     /**
@@ -39,7 +53,7 @@ class DocentePolicy
      */
     public function update(User $user, Docente $docente): bool
     {
-        return $user->can('update_docente');
+        return $this->canAny($user, ['update_docente', 'Update:Docente']);
     }
 
     /**
@@ -47,7 +61,7 @@ class DocentePolicy
      */
     public function delete(User $user, Docente $docente): bool
     {
-        return $user->can('delete_docente');
+        return $this->canAny($user, ['delete_docente', 'Delete:Docente']);
     }
 
     /**
@@ -55,7 +69,7 @@ class DocentePolicy
      */
     public function deleteAny(User $user): bool
     {
-        return $user->can('delete_any_docente');
+        return $this->canAny($user, ['delete_any_docente', 'DeleteAny:Docente']);
     }
 
     /**
@@ -63,7 +77,7 @@ class DocentePolicy
      */
     public function forceDelete(User $user, Docente $docente): bool
     {
-        return $user->can('force_delete_docente');
+        return $this->canAny($user, ['force_delete_docente', 'ForceDelete:Docente']);
     }
 
     /**
@@ -71,7 +85,7 @@ class DocentePolicy
      */
     public function forceDeleteAny(User $user): bool
     {
-        return $user->can('force_delete_any_docente');
+        return $this->canAny($user, ['force_delete_any_docente', 'ForceDeleteAny:Docente']);
     }
 
     /**
@@ -79,7 +93,7 @@ class DocentePolicy
      */
     public function restore(User $user, Docente $docente): bool
     {
-        return $user->can('restore_docente');
+        return $this->canAny($user, ['restore_docente', 'Restore:Docente']);
     }
 
     /**
@@ -87,7 +101,7 @@ class DocentePolicy
      */
     public function restoreAny(User $user): bool
     {
-        return $user->can('restore_any_docente');
+        return $this->canAny($user, ['restore_any_docente', 'RestoreAny:Docente']);
     }
 
     /**
@@ -95,7 +109,7 @@ class DocentePolicy
      */
     public function replicate(User $user, Docente $docente): bool
     {
-        return $user->can('replicate_docente');
+        return $this->canAny($user, ['replicate_docente', 'Replicate:Docente']);
     }
 
     /**
@@ -103,6 +117,6 @@ class DocentePolicy
      */
     public function reorder(User $user): bool
     {
-        return $user->can('reorder_docente');
+        return $this->canAny($user, ['reorder_docente', 'Reorder:Docente']);
     }
 }

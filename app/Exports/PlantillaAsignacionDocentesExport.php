@@ -11,20 +11,21 @@ class PlantillaAsignacionDocentesExport implements FromArray, WithHeadings, With
 {
     public function headings(): array
     {
-    return ['codigo','dni','nombres','cargo','local','fecha'];
+        return ['codigo', 'dni', 'nombres', 'cargo', 'local', 'fecha', 'monto'];
     }
 
     public function array(): array
     {
         return [
             // Para docentes normalmente se usa solo nombres completos; se dejan paterno/materno vacíos opcionales.
-            ['DOC001','44556677','PEREZ LOPEZ JUAN','COORDINADOR','LOCAL PRINCIPAL','2025-10-01'],
+            ['DOC001', '44556677', 'PEREZ LOPEZ JUAN', 'COORDINADOR', 'LOCAL PRINCIPAL', '2025-10-01', '120.00'],
         ];
     }
 
     public function styles(Worksheet $sheet)
     {
-        $sheet->getStyle('A1:F1')->getFont()->setBold(true);
+        $sheet->getStyle('A1:G1')->getFont()->setBold(true);
+
         return [];
     }
 }

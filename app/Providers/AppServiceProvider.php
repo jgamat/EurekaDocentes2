@@ -2,15 +2,16 @@
 
 namespace App\Providers;
 
+use App\Models\User;
 use App\Policies\ActivityPolicy;
+use App\Support\CurrentContext;
 use BezhanSalleh\FilamentShield\FilamentShield;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\ServiceProvider;
-use App\Support\CurrentContext;
 use Illuminate\Support\Facades\View;
+use Illuminate\Support\ServiceProvider;
 use Spatie\Activitylog\Models\Activity;
 
 class AppServiceProvider extends ServiceProvider
@@ -22,7 +23,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(CurrentContext::class, function () {
-            return new CurrentContext();
+            return new CurrentContext;
         });
     }
 
@@ -37,7 +38,7 @@ class AppServiceProvider extends ServiceProvider
         $this->configureFilament();
 
         // Share current context with all views (only in HTTP requests to avoid CLI/DB boot errors)
-        if (!$this->app->runningInConsole()) {
+        if (! $this->app->runningInConsole()) {
             try {
                 $ctx = $this->app->make(CurrentContext::class);
                 $ctx->ensureLoaded();
@@ -53,6 +54,15 @@ class AppServiceProvider extends ServiceProvider
         foreach ($this->policies as $model => $policy) {
             Gate::policy($model, $policy);
         }
+
+        // Global authorization bypass for super admins across resources and pages.
+        Gate::before(function (User $user, string $ability): ?bool {
+            if ($user->hasAnyRole(['super_admin', 'suer_admin'])) {
+                return true;
+            }
+
+            return null;
+        });
     }
 
     private function configureDB(): void
@@ -69,7 +79,7 @@ class AppServiceProvider extends ServiceProvider
 
     private function configureFilament(): void
     {
-        FilamentShield::prohibitDestructiveCommands($this->app->environment('production'));
+        // FilamentShield::prohibitDestructiveCommands($this->app->environment('production'));
 
         Table::configureUsing(fn (Table $table) => $table->paginationPageOptions([10, 25, 50]));
     }

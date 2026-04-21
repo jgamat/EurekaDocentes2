@@ -1,32 +1,31 @@
 <?php
 
 namespace App\Livewire;
-use App\Models\Locales;
+
 use App\Models\ExperienciaAdmision;
+use App\Models\Locales;
+use Filament\Actions\Concerns\InteractsWithActions;
+use Filament\Actions\Contracts\HasActions;
+use Filament\Actions\DetachAction;
+use Filament\Actions\EditAction;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\TextInput as FormsTextInput;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
-use Filament\Tables\Actions\DetachAction;
-use Filament\Tables\Actions\EditAction;
+use Filament\Notifications\Notification;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Filters\Filter;
-use Filament\Forms\Components\TextInput as FormsTextInput;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\On;
 use Livewire\Component;
-use Illuminate\Database\Eloquent\Model;
-use Closure;
-use Filament\Notifications\Notification;
-use Illuminate\Support\Facades\DB;
 
-
-
-
-class CargosAsignadosTable extends Component implements HasForms, HasTable
+class CargosAsignadosTable extends Component implements HasActions, HasForms, HasTable
 {
-
+    use InteractsWithActions;
     use InteractsWithForms;
     use InteractsWithTable;
 
@@ -40,109 +39,107 @@ class CargosAsignadosTable extends Component implements HasForms, HasTable
     }
 
     public function table(Table $table): Table
-{
-    return $table
-        ->query(function () {
-            
-            if (!$this->local) {
-                return ExperienciaAdmision::query()->whereRaw('1 = 0');
-            }
+    {
+        return $table
+            ->query(function () {
 
-            return ExperienciaAdmision::query()
-                ->join('localcargo', 'experienciaadmision.expadm_iCodigo', '=', 'localcargo.expadm_iCodigo')
-                ->join('experienciaadmisionMaestro', 'experienciaadmision.expadmma_iCodigo', '=', 'experienciaadmisionMaestro.expadmma_iCodigo')
-                ->where('localcargo.loc_iCodigo', $this->local->loc_iCodigo)
-                ->select(
-                    'experienciaadmision.*',
-                    'experienciaadmisionMaestro.expadmma_vcNombre',
-                    'localcargo.loccar_iVacante as pivot_loccar_iVacante',
-                    'localcargo.loccar_iOcupado as pivot_loccar_iOcupado'
-                )
-                ->orderBy('experienciaadmisionMaestro.expadmma_vcNombre', 'asc');
-       
-        
-        
-        })
-        ->heading('Cargos Ya Asignados a este Local')
-        ->columns([
-            TextColumn::make('expadmma_vcNombre')->label('Nombre del Cargo')->sortable()->searchable(),
-            TextColumn::make('pivot_loccar_iVacante')->label('Vacantes'),
-            TextColumn::make('pivot_loccar_iOcupado')->label('Ocupados'),
-        ])
-        ->filters([
-            Filter::make('nombre')
-                ->form([
-                    FormsTextInput::make('q')->label('Buscar por nombre')
-                        ->placeholder('Ej: Coordinador')
-                        ->live(debounce: 500),
-                ])
-                ->query(function ($query, array $data) {
-                    $q = trim($data['q'] ?? '');
-                    if ($q === '') return $query;
-                    $like = '%'.str_replace(' ', '%', $q).'%';
-                    return $query->where('experienciaadmisionMaestro.expadmma_vcNombre', 'like', $like);
-                })
-        ])
-        ->actions([
-            
-          EditAction::make()
-                ->modalHeading(fn ($record) => 'Editar Asignación para: ' . $record->maestro->expadmma_vcNombre)
-                ->modalButton('Guardar Cambios')
-                ->fillForm(function (Model $record): array {
-                
-                    return [
-                        'loccar_iVacante' => $record->pivot_loccar_iVacante,
-                        'loccar_iOcupado' => $record->pivot_loccar_iOcupado,
-                    ];
-                })
-              
-                ->form([
-                    TextInput::make('loccar_iVacante')
-                        ->label('Nuevas Vacantes')
-                        ->required()
-                        ->numeric(), // Quitamos la regla compleja de aquí
+                if (! $this->local) {
+                    return ExperienciaAdmision::query()->whereRaw('1 = 0');
+                }
 
-                    TextInput::make('loccar_iOcupado')
-                        ->label('Total Ocupados (Actual)')
-                        ->numeric()
-                        ->disabled(),
-                ])
-               
-                ->action(function (array $data, Model $record): void {
-                    
-                  
-                    $ocupados = $record->pivot_loccar_iOcupado;
-                    $nuevasVacantes = $data['loccar_iVacante'];
+                return ExperienciaAdmision::query()
+                    ->join('localcargo', 'experienciaadmision.expadm_iCodigo', '=', 'localcargo.expadm_iCodigo')
+                    ->join('experienciaadmisionMaestro', 'experienciaadmision.expadmma_iCodigo', '=', 'experienciaadmisionMaestro.expadmma_iCodigo')
+                    ->where('localcargo.loc_iCodigo', $this->local->loc_iCodigo)
+                    ->select(
+                        'experienciaadmision.*',
+                        'experienciaadmisionMaestro.expadmma_vcNombre',
+                        'localcargo.loccar_iVacante as pivot_loccar_iVacante',
+                        'localcargo.loccar_iOcupado as pivot_loccar_iOcupado'
+                    )
+                    ->orderBy('experienciaadmisionMaestro.expadmma_vcNombre', 'asc');
 
-                    if ($nuevasVacantes < $ocupados) {
-                        
-                        Notification::make()
-                            ->title('Error de Validación')
-                            ->body("Las vacantes ({$nuevasVacantes}) no pueden ser menores que el total de ocupados ({$ocupados}).")
-                            ->danger()
-                            ->send();
-                        return; // Detiene la acción aquí
-                    }
+            })
+            ->heading('Cargos Ya Asignados a este Local')
+            ->columns([
+                TextColumn::make('expadmma_vcNombre')->label('Nombre del Cargo')->sortable()->searchable(),
+                TextColumn::make('pivot_loccar_iVacante')->label('Vacantes'),
+                TextColumn::make('pivot_loccar_iOcupado')->label('Ocupados'),
+            ])
+            ->filters([
+                Filter::make('nombre')
+                    ->form([
+                        FormsTextInput::make('q')->label('Buscar por nombre')
+                            ->placeholder('Ej: Coordinador')
+                            ->live(debounce: 500),
+                    ])
+                    ->query(function ($query, array $data) {
+                        $q = trim($data['q'] ?? '');
+                        if ($q === '') {
+                            return $query;
+                        }
+                        $like = '%'.str_replace(' ', '%', $q).'%';
 
-                    DB::table('localcargo')
-       
-                      ->where('loc_iCodigo', $this->local->loc_iCodigo)
-        
-                      ->where('expadm_iCodigo', $record->expadm_iCodigo)
-                      ->update([
-                         'loccar_iVacante' => $nuevasVacantes,
-                          'updated_at' => now(),
-                     ]);
+                        return $query->where('experienciaadmisionMaestro.expadmma_vcNombre', 'like', $like);
+                    }),
+            ])
+            ->actions([
 
-                    Notification::make()->title('Asignación actualizada')->success()->send();
-                }),
-           
+                EditAction::make()
+                    ->modalHeading(fn ($record) => 'Editar Asignación para: '.$record->maestro->expadmma_vcNombre)
+                    ->modalButton('Guardar Cambios')
+                    ->fillForm(function (Model $record): array {
+
+                        return [
+                            'loccar_iVacante' => $record->pivot_loccar_iVacante,
+                            'loccar_iOcupado' => $record->pivot_loccar_iOcupado,
+                        ];
+                    })
+                    ->form([
+                        TextInput::make('loccar_iVacante')
+                            ->label('Nuevas Vacantes')
+                            ->required()
+                            ->numeric(), // Quitamos la regla compleja de aquí
+
+                        TextInput::make('loccar_iOcupado')
+                            ->label('Total Ocupados (Actual)')
+                            ->numeric()
+                            ->disabled(),
+                    ])
+                    ->action(function (array $data, Model $record): void {
+
+                        $ocupados = $record->pivot_loccar_iOcupado;
+                        $nuevasVacantes = $data['loccar_iVacante'];
+
+                        if ($nuevasVacantes < $ocupados) {
+
+                            Notification::make()
+                                ->title('Error de Validación')
+                                ->body("Las vacantes ({$nuevasVacantes}) no pueden ser menores que el total de ocupados ({$ocupados}).")
+                                ->danger()
+                                ->send();
+
+                            return; // Detiene la acción aquí
+                        }
+
+                        DB::table('localcargo')
+                            ->where('loc_iCodigo', $this->local->loc_iCodigo)
+                            ->where('expadm_iCodigo', $record->expadm_iCodigo)
+                            ->update([
+                                'loccar_iVacante' => $nuevasVacantes,
+                                'updated_at' => now(),
+                            ]);
+
+                        Notification::make()->title('Asignación actualizada')->success()->send();
+                    }),
+
                 DetachAction::make()
-                 ->action(function ($record): void {            
-                $this->local->experienciaAdmision()->detach($record);
-             }),
-        ]);
-}
+                    ->action(function ($record): void {
+                        $this->local->experienciaAdmision()->detach($record);
+                    }),
+            ]);
+    }
+
     public function render()
     {
         return view('livewire.cargos-asignados-table');

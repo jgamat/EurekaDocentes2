@@ -78,4 +78,11 @@ body.auth-body {
 .dark .auth-input { background:#111827; border-color:#374151; color:#f3f4f6; }
 .dark .auth-input:focus { border-color: var(--auth-primary); }
 .dark .auth-link { color:#60a5fa; }
+.dark .auth-btn {
+  background:#fcd34d;
+  border-color:#fcd34d;
+  color:#18181b;
+}
+.dark .auth-btn:hover { background:#fbbf24; border-color:#fbbf24; }
+.dark .auth-btn[data-loading="true"]::after { border-color:#18181b; border-top-color:transparent; }
 .logo-wrapper { display:flex; justify-content:center; margin-bottom:1rem; }

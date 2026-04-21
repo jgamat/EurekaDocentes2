@@ -9,31 +9,33 @@ use App\Models\ProcesoAdministrativo;
 use App\Models\ProcesoFecha;
 use App\Support\CurrentContext;
 use App\Support\Traits\UsesGlobalContext;
-use Filament\Forms\Components\Hidden;
+use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
-use Filament\Forms\Form;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Schemas\Schema;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\On;
-use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 
 class AsignarAdministrativos extends Page implements HasForms
 {
-    use InteractsWithForms;
     use HasPageShield;
+    use InteractsWithForms;
     use UsesGlobalContext;
 
-    protected static ?string $navigationIcon = 'heroicon-o-user-plus';
-    protected static string $view = 'filament.pages.asignar-administrativos';
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-user-plus';
+
+    protected string $view = 'filament.pages.asignar-administrativos';
+
     protected static ?string $navigationLabel = 'Asignar Administrativos';
-        protected static ?string $navigationGroup = 'Administrativos';
+
+    protected static string|\UnitEnum|null $navigationGroup = 'Administrativos';
 
     public ?LocalCargo $plazaSeleccionada = null;
+
     public ?array $data = [];
 
     #[On('contextoActualizado')]
@@ -76,7 +78,7 @@ class AsignarAdministrativos extends Page implements HasForms
             ->send();
     }
 
-    public function form(Form $form): Form
+    public function form(Schema $form): Schema
     {
         return $form
             ->schema([
@@ -90,8 +92,8 @@ class AsignarAdministrativos extends Page implements HasForms
                     ->reactive()
                     ->hidden()
                     ->dehydrated(true)
-                    ->default(fn() => app(CurrentContext::class)->fechaId())
-                    ->afterStateUpdated(function($state, callable $set){
+                    ->default(fn () => app(CurrentContext::class)->fechaId())
+                    ->afterStateUpdated(function ($state, callable $set) {
                         $set('local_id', null);
                         $set('experiencia_admision_id', null);
                         $this->plazaSeleccionada = null;
@@ -115,7 +117,7 @@ class AsignarAdministrativos extends Page implements HasForms
                     ->label('2. Seleccione el Local')
                     ->options(function (callable $get): Collection {
                         $fechaId = $get('proceso_fecha_id');
-                        if (!$fechaId) {
+                        if (! $fechaId) {
                             return collect();
                         }
 
@@ -156,20 +158,21 @@ class AsignarAdministrativos extends Page implements HasForms
                     ->label('3. Seleccione el Cargo')
                     ->options(function (callable $get): Collection {
                         $localId = $get('local_id');
-                        if (!$localId) {
+                        if (! $localId) {
                             return collect();
                         }
                         $local = Locales::find($localId);
-                        if(!$local){
+                        if (! $local) {
                             return collect();
                         }
                         $query = $local->experienciaAdmision();
-                        $excluir = [2,3,4];
-                        $query->whereHas('maestro', fn($q)=> $q->whereNotIn('expadmma_iCodigo',$excluir));
+                        $excluir = [2, 3, 4];
+                        $query->whereHas('maestro', fn ($q) => $q->whereNotIn('expadmma_iCodigo', $excluir));
                         // Ordenar por nombre del cargo (relación maestro)
                         $cargos = $query->with('maestro')->get()
-                            ->sortBy(fn($c) => mb_strtolower($c->maestro->expadmma_vcNombre ?? ''), SORT_NATURAL);
-                        return $cargos->pluck('maestro.expadmma_vcNombre','expadm_iCodigo');
+                            ->sortBy(fn ($c) => mb_strtolower($c->maestro->expadmma_vcNombre ?? ''), SORT_NATURAL);
+
+                        return $cargos->pluck('maestro.expadmma_vcNombre', 'expadm_iCodigo');
                     })
                     ->searchable()
                     ->validationMessages([
@@ -179,8 +182,9 @@ class AsignarAdministrativos extends Page implements HasForms
                     ->reactive()
                     ->afterStateUpdated(function ($state, callable $get) {
                         $localId = $get('local_id');
-                        if (!$localId || !$state) {
+                        if (! $localId || ! $state) {
                             $this->plazaSeleccionada = null;
+
                             return;
                         }
                         $this->plazaSeleccionada = LocalCargo::where('loc_iCodigo', $localId)
@@ -204,12 +208,15 @@ class AsignarAdministrativos extends Page implements HasForms
                     ->helperText('Primero seleccione Local y Cargo; luego elija el administrativo para asignar.')
                     ->disabled(fn (callable $get) => empty($get('local_id')) || empty($get('experiencia_admision_id')))
                     ->getSearchResultsUsing(function (string $search): array {
-                        if (strlen($search) < 2) return [];
+                        if (strlen($search) < 2) {
+                            return [];
+                        }
+
                         return Administrativo::query()
                             ->where(function ($q) use ($search) {
                                 $q->where('adm_vcNombres', 'like', "%{$search}%")
-                                  ->orWhere('adm_vcDni', 'like', "%{$search}%")
-                                  ->orWhere('adm_vcCodigo', 'like', "%{$search}%");
+                                    ->orWhere('adm_vcDni', 'like', "%{$search}%")
+                                    ->orWhere('adm_vcCodigo', 'like', "%{$search}%");
                             })
                             ->orderBy('adm_vcNombres')
                             ->limit(25)
@@ -220,13 +227,18 @@ class AsignarAdministrativos extends Page implements HasForms
                             ->toArray();
                     })
                     ->getOptionLabelUsing(function ($value): ?string {
-                        if (!$value) return null;
+                        if (! $value) {
+                            return null;
+                        }
                         $a = Administrativo::where('adm_vcDni', $value)->first();
+
                         return $a ? ($a->adm_vcNombres.' - '.$a->adm_vcDni.' - '.$a->adm_vcCodigo) : $value;
                     })
                     ->reactive()
                     ->afterStateUpdated(function ($state) {
-                        if ($state) { $this->asignarAdministrativoDirecto(); }
+                        if ($state) {
+                            $this->asignarAdministrativoDirecto();
+                        }
                     }),
             ])
             ->statePath('data');
@@ -238,7 +250,7 @@ class AsignarAdministrativos extends Page implements HasForms
         // Reforzar integridad del contexto: usar CurrentContext si falta la fecha
         $ctx = app(CurrentContext::class);
         $fechaId = $data['proceso_fecha_id'] ?? $ctx->fechaId();
-        if (!isset($data['proceso_fecha_id'])) {
+        if (! isset($data['proceso_fecha_id'])) {
             // Volcar la fecha al state para evitar futuros vacíos
             $this->form->fill(['proceso_fecha_id' => $fechaId]);
             $data['proceso_fecha_id'] = $fechaId;
@@ -248,12 +260,13 @@ class AsignarAdministrativos extends Page implements HasForms
         $dni = $data['administrativo_dni'] ?? null;
 
         $administrativo = $dni ? Administrativo::where('adm_vcDni', $dni)->first() : null;
-        if (!$administrativo) {
+        if (! $administrativo) {
             Notification::make()
                 ->title('Error')
                 ->body('No se encontró el administrativo seleccionado.')
                 ->danger()
                 ->send();
+
             return;
         }
 
@@ -269,6 +282,7 @@ class AsignarAdministrativos extends Page implements HasForms
                 ->body('Debes seleccionar Fecha, Local y Cargo antes de asignar un administrativo.')
                 ->danger()
                 ->send();
+
             return;
         }
 
@@ -277,12 +291,13 @@ class AsignarAdministrativos extends Page implements HasForms
             ->where('expadm_iCodigo', $data['experiencia_admision_id'])
             ->first();
 
-        if (!$plaza) {
+        if (! $plaza) {
             Notification::make()
                 ->title('Error')
                 ->body('No se encontró la plaza seleccionada.')
                 ->danger()
                 ->send();
+
             return;
         }
 
@@ -308,6 +323,7 @@ class AsignarAdministrativos extends Page implements HasForms
                 ->body("El administrativo {$administrativo->adm_vcNombres} ya está asignado en la fecha seleccionada ({$locNombreExist} - {$cargoNombreExist}).")
                 ->danger()
                 ->send();
+
             return;
         }
 
@@ -320,6 +336,7 @@ class AsignarAdministrativos extends Page implements HasForms
                 ->body("El administrativo {$administrativo->adm_vcNombres} ya está asignado en esta fecha en el {$localNombre} - {$cargoNombre}.")
                 ->danger()
                 ->send();
+
             return;
         }
 
@@ -330,6 +347,7 @@ class AsignarAdministrativos extends Page implements HasForms
                 ->body('No quedan vacantes para esta plaza.')
                 ->danger()
                 ->send();
+
             return;
         }
 
@@ -339,8 +357,8 @@ class AsignarAdministrativos extends Page implements HasForms
             ->where('proadm_iAsignacion', 0)
             ->first();
 
-    DB::transaction(function () use ($plaza, $administrativo, $data, $asignacionPendiente, $dni, $fechaId) {
-        $ip = request()->header('X-Forwarded-For') ? explode(',', request()->header('X-Forwarded-For'))[0] : request()->ip();
+        DB::transaction(function () use ($plaza, $asignacionPendiente, $dni, $fechaId) {
+            $ip = request()->header('X-Forwarded-For') ? explode(',', request()->header('X-Forwarded-For'))[0] : request()->ip();
             if ($asignacionPendiente) {
                 $asignacionPendiente->update([
                     'loc_iCodigo' => $plaza->loc_iCodigo,
@@ -349,7 +367,7 @@ class AsignarAdministrativos extends Page implements HasForms
                     'proadm_dtFechaAsignacion' => now(),
                     'user_id' => auth()->id(),
                     'adm_vcDni' => $dni,
-            'proadm_vcIpAsignacion' => $ip,
+                    'proadm_vcIpAsignacion' => $ip,
                 ]);
             } else {
                 ProcesoAdministrativo::create([
@@ -360,7 +378,7 @@ class AsignarAdministrativos extends Page implements HasForms
                     'proadm_iAsignacion' => 1,
                     'proadm_dtFechaAsignacion' => now(),
                     'user_id' => auth()->id(),
-            'proadm_vcIpAsignacion' => $ip,
+                    'proadm_vcIpAsignacion' => $ip,
                 ]);
             }
             $plaza->increment('loccar_iOcupado');

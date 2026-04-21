@@ -2,32 +2,44 @@
 
 namespace App\Filament\Pages;
 
-use Filament\Pages\Page;
-use Filament\Forms;
-use Livewire\WithFileUploads;
-use Filament\Notifications\Notification;
-use Maatwebsite\Excel\Facades\Excel;
-use App\Exports\PlantillaAsignacionAdministrativosExport;
+use App\DTO\Import\AdministrativoAssignmentRow;
 use App\Exports\ErroresAsignacionAdministrativosExport;
-use App\Services\Import\AdministrativoAssignmentImportService;
+use App\Exports\PlantillaAsignacionAdministrativosExport;
 use App\Filament\Pages\Concerns\WithAssignmentFileHandling;
+use App\Models\ImportJobLog;
+use App\Services\Import\AdministrativoAssignmentImportService;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
+use Filament\Forms;
+use Filament\Notifications\Notification;
+use Filament\Pages\Page;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Log;
+use Livewire\WithFileUploads;
+use Maatwebsite\Excel\Facades\Excel;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ImportarAsignacionAdministrativos extends Page implements Forms\Contracts\HasForms
 {
     use Forms\Concerns\InteractsWithForms;
-    use WithFileUploads;
+    use HasPageShield;
     use WithAssignmentFileHandling;
-       use HasPageShield; 
+    use WithFileUploads;
 
-    protected static ?string $navigationIcon = 'heroicon-o-document-text';
-    protected static ?string $navigationGroup = 'Asignaciones';
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-document-text';
+
+    protected static string|\UnitEnum|null $navigationGroup = 'Asignaciones';
+
     protected static ?string $title = 'Importar Asignación Administrativos';
-    protected static string $view = 'filament.pages.importar-asignacion-administrativos';
+
+    protected string $view = 'filament.pages.importar-asignacion-administrativos';
 
     public $file = null;
+
     public array $preview = [];
+
     public bool $allowPartial = false;
+
     public bool $onlyValidate = false;
 
     public function mount(): void
@@ -45,7 +57,7 @@ class ImportarAsignacionAdministrativos extends Page implements Forms\Contracts\
                 ->acceptedFileTypes([
                     'text/csv',
                     'application/vnd.ms-excel',
-                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 ])
                 ->maxSize(5120)
                 ->required(),
@@ -60,36 +72,38 @@ class ImportarAsignacionAdministrativos extends Page implements Forms\Contracts\
         ];
     }
 
-    protected function getFormModel(): \Illuminate\Database\Eloquent\Model|string|null
+    protected function getFormModel(): Model|string|null
     {
         return static::class;
     }
 
     public function parseFile(AdministrativoAssignmentImportService $service): void
     {
-        if (!$this->file) {
+        if (! $this->file) {
             try {
                 $state = $this->form->getState();
                 if (isset($state['file']) && $state['file']) {
                     $this->file = $state['file'];
                 }
             } catch (\Throwable $e) {
-                \Log::debug('[ImportarAsignacionAdministrativos] No se pudo obtener state del form', ['ex'=>$e->getMessage()]);
+                Log::debug('[ImportarAsignacionAdministrativos] No se pudo obtener state del form', ['ex' => $e->getMessage()]);
             }
         }
         $meta = $this->resolveFileMeta();
-        if (!$meta || !($meta['abs'] ?? null)) {
+        if (! $meta || ! ($meta['abs'] ?? null)) {
             Notification::make()->danger()->title('Seleccione un archivo válido')->send();
+
             return;
         }
         $abs = $meta['abs'];
         $rawRows = $this->readSpreadsheet($abs);
         if (empty($rawRows)) {
             Notification::make()->danger()->title('Archivo vacío o formato no soportado')->send();
+
             return;
         }
         $rows = $service->parse($rawRows);
-        $this->preview = $rows->map(fn($dto) => [
+        $this->preview = $rows->map(fn ($dto) => [
             'row' => $dto->rowNumber,
             'codigo' => $dto->codigo,
             'dni' => $dto->dni,
@@ -97,6 +111,8 @@ class ImportarAsignacionAdministrativos extends Page implements Forms\Contracts\
             'cargo' => $dto->cargoNombre,
             'local' => $dto->localNombre,
             'fecha' => $dto->fechaISO,
+            'monto' => $dto->monto,
+            'monto_estado' => $dto->montoEstado,
             'errores' => $dto->errors,
             'warnings' => $dto->warnings,
             'valid' => $dto->valid,
@@ -113,32 +129,38 @@ class ImportarAsignacionAdministrativos extends Page implements Forms\Contracts\
         $meta = $this->resolveFileMeta();
         if (empty($this->preview)) {
             Notification::make()->danger()->title('Primero procese un archivo')->send();
+
             return;
         }
         if ($this->onlyValidate) {
             Notification::make()->danger()->title('Modo sólo validación activo')->body('Desactive "Sólo validar" para importar.')->send();
-            return;        
+
+            return;
         }
         $collection = collect($this->preview)->map(function ($arr) {
-            $dto = new \App\DTO\Import\AdministrativoAssignmentRow($arr['row']);
+            $dto = new AdministrativoAssignmentRow($arr['row']);
             $dto->codigo = $arr['codigo'];
             $dto->dni = $arr['dni'];
             $dto->nombres = $arr['nombres'];
             $dto->cargoNombre = $arr['cargo'];
             $dto->localNombre = $arr['local'];
             $dto->fechaISO = $arr['fecha'];
+            $dto->monto = ($arr['monto'] ?? null) === null || $arr['monto'] === '' ? null : (float) $arr['monto'];
+            $dto->montoEstado = $arr['monto_estado'] ?? null;
             $dto->errors = $arr['errores'];
             $dto->warnings = $arr['warnings'];
             $dto->valid = $arr['valid'];
             $dto->cargoId = $arr['cargo_id'] ?? null;
             $dto->localId = $arr['local_id'] ?? null;
             $dto->procesoFechaId = $arr['proceso_fecha_id'] ?? null;
+
             return $dto;
         });
 
-        $allValid = $collection->every(fn($d) => $d->valid);
-        if (!$allValid && !$this->allowPartial) {
+        $allValid = $collection->every(fn ($d) => $d->valid);
+        if (! $allValid && ! $this->allowPartial) {
             Notification::make()->danger()->title('Existen errores')->body('Corrija el archivo o active la importación parcial.')->send();
+
             return;
         }
         $original = $meta['original'] ?? null;
@@ -147,10 +169,14 @@ class ImportarAsignacionAdministrativos extends Page implements Forms\Contracts\
         if ($original || ($meta['abs'] ?? false)) {
             $ext = pathinfo($original, PATHINFO_EXTENSION);
             $safeOriginal = pathinfo($original, PATHINFO_FILENAME);
-            if (!$original) {
+            if (! $original) {
                 $tmpExt = pathinfo($meta['abs'], PATHINFO_EXTENSION);
-                if (!$ext && $tmpExt) { $ext = $tmpExt; }
-                if (!$safeOriginal) { $safeOriginal = 'import_administrativos'; }
+                if (! $ext && $tmpExt) {
+                    $ext = $tmpExt;
+                }
+                if (! $safeOriginal) {
+                    $safeOriginal = 'import_administrativos';
+                }
             }
             $timestamped = now()->format('Ymd_His').'_'.$safeOriginal.'.'.$ext;
             $destRel = 'imports/history/'.$timestamped;
@@ -159,24 +185,34 @@ class ImportarAsignacionAdministrativos extends Page implements Forms\Contracts\
             $src = null;
             if ($storedPath) {
                 $candidate = storage_path('app/'.$storedPath);
-                if (is_file($candidate)) $src = $candidate;
+                if (is_file($candidate)) {
+                    $src = $candidate;
+                }
             }
-            if (!$src && ($meta['abs'] ?? null) && is_file($meta['abs'])) { $src = $meta['abs']; }
-            if ($src && @copy($src, $destAbs)) { $historicalPath = $destRel; }
+            if (! $src && ($meta['abs'] ?? null) && is_file($meta['abs'])) {
+                $src = $meta['abs'];
+            }
+            if ($src && @copy($src, $destAbs)) {
+                $historicalPath = $destRel;
+            }
         }
         $res = $service->import($collection, $this->allowPartial, $original);
-        if ($historicalPath && class_exists(\App\Models\ImportJobLog::class)) {
-            \App\Models\ImportJobLog::latest('id')->where('filename_original', $original)->first()?->update(['file_path' => $historicalPath]);
+        if ($historicalPath && class_exists(ImportJobLog::class)) {
+            ImportJobLog::latest('id')->where('filename_original', $original)->first()?->update(['file_path' => $historicalPath]);
         }
         Notification::make()->success()->title('Importación completada')->body("Filas importadas: {$res['imported']} | Omitidas: {$res['skipped']}")->send();
     }
 
-    public function downloadErrores(): ?\Symfony\Component\HttpFoundation\StreamedResponse
+    public function downloadErrores(): ?StreamedResponse
     {
-        if (empty($this->preview)) return null;
-        $csv = implode(',', ['fila','codigo','dni','cargo','local','fecha','errores','warnings']) . "\n";
+        if (empty($this->preview)) {
+            return null;
+        }
+        $csv = implode(',', ['fila', 'codigo', 'dni', 'cargo', 'local', 'fecha', 'monto', 'errores', 'warnings'])."\n";
         foreach ($this->preview as $r) {
-            if ($r['valid']) continue;
+            if ($r['valid']) {
+                continue;
+            }
             $csv .= implode(',', [
                 $r['row'],
                 $r['codigo'],
@@ -184,25 +220,34 @@ class ImportarAsignacionAdministrativos extends Page implements Forms\Contracts\
                 $this->escapeCsv($r['cargo']),
                 $this->escapeCsv($r['local']),
                 $r['fecha'],
+                $r['monto'] ?? '',
                 $this->escapeCsv(implode('|', $r['errores'])),
                 $this->escapeCsv(implode('|', $r['warnings'])),
-            ]) . "\n";
+            ])."\n";
         }
-        $filename = 'errores_import_administrativos_' . now()->format('Ymd_His') . '.csv';
-        return response()->streamDownload(function () use ($csv) { echo $csv; }, $filename, [ 'Content-Type' => 'text/csv' ]);
+        $filename = 'errores_import_administrativos_'.now()->format('Ymd_His').'.csv';
+
+        return response()->streamDownload(function () use ($csv) {
+            echo $csv;
+        }, $filename, ['Content-Type' => 'text/csv']);
     }
 
-    public function downloadErroresXlsx(): ?\Symfony\Component\HttpFoundation\BinaryFileResponse
+    public function downloadErroresXlsx(): ?BinaryFileResponse
     {
-        if (empty($this->preview)) return null;
-        $errores = collect($this->preview)->filter(fn($r)=> !$r['valid']);
-        if ($errores->isEmpty()) { return null; }
+        if (empty($this->preview)) {
+            return null;
+        }
+        $errores = collect($this->preview)->filter(fn ($r) => ! $r['valid']);
+        if ($errores->isEmpty()) {
+            return null;
+        }
+
         return Excel::download(new ErroresAsignacionAdministrativosExport($errores), 'errores_import_administrativos.xlsx');
     }
 
-    public function downloadPlantilla(): ?\Symfony\Component\HttpFoundation\BinaryFileResponse
+    public function downloadPlantilla(): ?BinaryFileResponse
     {
-        return Excel::download(new PlantillaAsignacionAdministrativosExport(), 'plantilla_asignacion_administrativos.xlsx');
+        return Excel::download(new PlantillaAsignacionAdministrativosExport, 'plantilla_asignacion_administrativos.xlsx');
     }
 
     // File handling methods now provided by WithAssignmentFileHandling trait

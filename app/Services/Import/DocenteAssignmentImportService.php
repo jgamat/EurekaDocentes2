@@ -4,22 +4,25 @@ namespace App\Services\Import;
 
 use App\DTO\Import\DocenteAssignmentRow;
 use App\Models\Docente;
-use App\Models\ProcesoFecha;
-use App\Models\ProcesoDocente;
 use App\Models\ExperienciaAdmision;
 use App\Models\ExperienciaAdmisionMaestro;
-use App\Models\LocalesMaestro;
-use App\Models\Locales;
+use App\Models\ImportJobLog;
 use App\Models\LocalCargo;
+use App\Models\Locales;
+use App\Models\LocalesMaestro;
+use App\Models\ProcesoDocente;
+use App\Models\ProcesoFecha;
+use App\Services\Import\Concerns\SharedAssignmentImport;
+use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
-use App\Services\Import\Concerns\SharedAssignmentImport;
 
 class DocenteAssignmentImportService
 {
     use SharedAssignmentImport;
+
     /** @var array<string,bool> */
     protected array $seenKeys = [];
 
@@ -28,45 +31,49 @@ class DocenteAssignmentImportService
         $results = collect();
 
         // Cache catálogos para reducir queries
-        $catalogoDocentes = Docente::query()->select('doc_vcCodigo','doc_vcDni','doc_vcNombre','doc_vcPaterno','doc_vcMaterno')->get();
-        $docentesPorCodigo = $catalogoDocentes->keyBy(fn($d)=> strtoupper($d->doc_vcCodigo));
-        $docentesPorDni = $catalogoDocentes->keyBy(fn($d)=> $d->doc_vcDni);
+        $catalogoDocentes = Docente::query()->select('doc_vcCodigo', 'doc_vcDni', 'doc_vcNombre', 'doc_vcPaterno', 'doc_vcMaterno')->get();
+        $docentesPorCodigo = $catalogoDocentes->keyBy(fn ($d) => strtoupper($d->doc_vcCodigo));
+        $docentesPorDni = $catalogoDocentes->keyBy(fn ($d) => $d->doc_vcDni);
 
-        $catalogoFechas = ProcesoFecha::query()->select('profec_iCodigo','profec_dFecha')->get();
-        $fechasPorDate = $catalogoFechas->keyBy(fn($f)=> Carbon::parse($f->profec_dFecha)->format('Y-m-d'));
+        $catalogoFechas = ProcesoFecha::query()->select('profec_iCodigo', 'profec_dFecha')->get();
+        $fechasPorDate = $catalogoFechas->keyBy(fn ($f) => Carbon::parse($f->profec_dFecha)->format('Y-m-d'));
 
         // Cargos: separar catálogo de maestros y de instancias por fecha
         $catalogoCargosInst = ExperienciaAdmision::query()
-            ->select('expadm_iCodigo','expadmma_iCodigo','profec_iCodigo')
+            ->select('expadm_iCodigo', 'expadmma_iCodigo', 'profec_iCodigo', 'expadm_fMonto')
             ->with(['maestro:expadmma_iCodigo,expadmma_vcNombre'])
             ->get();
         $catalogoCargosMaestro = ExperienciaAdmisionMaestro::query()
-            ->select('expadmma_iCodigo','expadmma_vcNombre')
+            ->select('expadmma_iCodigo', 'expadmma_vcNombre')
             ->get();
 
-        $normKey = function(string $s): string {
+        $normKey = function (string $s): string {
             $s = mb_strtoupper($s);
-            $s = strtr($s, ['Á'=>'A','É'=>'E','Í'=>'I','Ó'=>'O','Ú'=>'U','Ü'=>'U']);
-            $s = preg_replace('/\s+/',' ',trim($s));
+            $s = strtr($s, ['Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U', 'Ü' => 'U']);
+            $s = preg_replace('/\s+/', ' ', trim($s));
+
             return $s;
         };
 
         $maestroPorNombre = $catalogoCargosMaestro
-            ->mapWithKeys(fn($m)=> [ $normKey($m->expadmma_vcNombre) => $m ]);
+            ->mapWithKeys(fn ($m) => [$normKey($m->expadmma_vcNombre) => $m]);
 
         // Índice de instancias existentes: maestroId|procesoFechaId => expadm_iCodigo
         $instanciaCargoIndex = $catalogoCargosInst->mapWithKeys(
-            fn($ci)=> [ ($ci->expadmma_iCodigo.'|'.$ci->profec_iCodigo) => $ci->expadm_iCodigo ]
+            fn ($ci) => [($ci->expadmma_iCodigo.'|'.$ci->profec_iCodigo) => $ci->expadm_iCodigo]
+        );
+        $instanciaCargoMetaIndex = $catalogoCargosInst->mapWithKeys(
+            fn ($ci) => [($ci->expadmma_iCodigo.'|'.$ci->profec_iCodigo) => $ci]
         );
 
-    // Catálogo de locales maestro y mapeo a instancias 'locales' por fecha
-    $catalogoLocalesMaestro = LocalesMaestro::query()->select('locma_iCodigo','locma_vcNombre')->get();
-    $normLocal = fn(string $s)=> preg_replace('/\s+/',' ',trim(mb_strtoupper(strtr($s,['Á'=>'A','É'=>'E','Í'=>'I','Ó'=>'O','Ú'=>'U','Ü'=>'U']))));
-    $localMaestroMatch = $catalogoLocalesMaestro->mapWithKeys(fn($l)=> [ $normLocal($l->locma_vcNombre) => $l ]);
+        // Catálogo de locales maestro y mapeo a instancias 'locales' por fecha
+        $catalogoLocalesMaestro = LocalesMaestro::query()->select('locma_iCodigo', 'locma_vcNombre')->get();
+        $normLocal = fn (string $s) => preg_replace('/\s+/', ' ', trim(mb_strtoupper(strtr($s, ['Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U', 'Ü' => 'U']))));
+        $localMaestroMatch = $catalogoLocalesMaestro->mapWithKeys(fn ($l) => [$normLocal($l->locma_vcNombre) => $l]);
 
-    // Pre-cargar instancias existentes en 'locales' (locma_iCodigo, profec_iCodigo)
-    $instanciasLocales = Locales::query()->select('loc_iCodigo','locma_iCodigo','profec_iCodigo')->get();
-    $instanciaIndex = $instanciasLocales->mapWithKeys(fn($r)=> [ $r->locma_iCodigo.'|'.$r->profec_iCodigo => $r->loc_iCodigo ]);
+        // Pre-cargar instancias existentes en 'locales' (locma_iCodigo, profec_iCodigo)
+        $instanciasLocales = Locales::query()->select('loc_iCodigo', 'locma_iCodigo', 'profec_iCodigo')->get();
+        $instanciaIndex = $instanciasLocales->mapWithKeys(fn ($r) => [$r->locma_iCodigo.'|'.$r->profec_iCodigo => $r->loc_iCodigo]);
 
         foreach ($rawRows as $idx => $row) {
             // Mapear cabeceras a claves canónicas (soporta alias y orden variable)
@@ -77,8 +84,15 @@ class DocenteAssignmentImportService
             $dto->codigo = $this->norm($row['codigo'] ?? null);
             $dto->dni = $this->norm($row['dni'] ?? null);
             // Formato oficial usa sólo 'nombres'; si vienen componentes separados se combinan opcionalmente.
-            if (!empty($row['paterno']) || !empty($row['materno'])) {
-                $parts=[]; if(!empty($row['paterno'])) $parts[] = trim($row['paterno']); if(!empty($row['materno'])) $parts[] = trim($row['materno']); if(!empty($row['nombres'])) $parts[] = trim($row['nombres']);
+            if (! empty($row['paterno']) || ! empty($row['materno'])) {
+                $parts = [];
+                if (! empty($row['paterno'])) {
+                    $parts[] = trim($row['paterno']);
+                } if (! empty($row['materno'])) {
+                    $parts[] = trim($row['materno']);
+                } if (! empty($row['nombres'])) {
+                    $parts[] = trim($row['nombres']);
+                }
                 $dto->nombres = trim(implode(' ', $parts));
             } else {
                 $dto->nombres = trim($row['nombres'] ?? '');
@@ -86,28 +100,36 @@ class DocenteAssignmentImportService
             $dto->cargoNombre = $this->norm($row['cargo'] ?? null);
             $dto->localNombre = $this->norm($row['local'] ?? null);
             $dto->fechaOriginal = $row['fecha'] ?? null;
+            $dto->monto = $this->parseMonto($row['monto'] ?? null);
+
+            if (($row['monto'] ?? null) !== null && trim((string) $row['monto']) !== '' && $dto->monto === null) {
+                $dto->errors[] = 'Monto inválido';
+            }
+            if ($dto->monto === null) {
+                $dto->montoEstado = 'Sin monto';
+            }
 
             // Fecha
             $dto->fechaISO = $this->parseFecha($dto->fechaOriginal);
-            if (!$dto->fechaISO) {
+            if (! $dto->fechaISO) {
                 $dto->errors[] = 'Fecha inválida';
             }
 
             // ProcesoFecha + activo
             if ($dto->fechaISO) {
                 $pf = $fechasPorDate[$dto->fechaISO] ?? null;
-                if (!$pf) {
+                if (! $pf) {
                     $dto->errors[] = 'Fecha no corresponde a ProcesoFecha';
                 } else {
-                    if (property_exists($pf,'profec_iActivo') && (int)$pf->profec_iActivo !== 1) {
+                    if (property_exists($pf, 'profec_iActivo') && (int) $pf->profec_iActivo !== 1) {
                         $dto->errors[] = 'ProcesoFecha no activo';
                     }
                     $dto->procesoFechaId = $pf->profec_iCodigo;
                 }
             }
-            if ($dto->fechaISO && !$dto->procesoFechaId) {
+            if ($dto->fechaISO && ! $dto->procesoFechaId) {
                 // seguridad adicional si por algún flujo anterior no se marcó error
-                if (!in_array('Fecha no corresponde a ProcesoFecha', $dto->errors, true)) {
+                if (! in_array('Fecha no corresponde a ProcesoFecha', $dto->errors, true)) {
                     $dto->errors[] = 'Fecha no corresponde a ProcesoFecha';
                 }
             }
@@ -115,8 +137,9 @@ class DocenteAssignmentImportService
             // Validación DNI formato
             if ($dto->dni) {
                 $len = strlen($dto->dni);
-                $min = config('import.dni_min_length',8); $max = config('import.dni_max_length',9);
-                if (!ctype_digit($dto->dni) || $len < $min || $len > $max) {
+                $min = config('import.dni_min_length', 8);
+                $max = config('import.dni_max_length', 9);
+                if (! ctype_digit($dto->dni) || $len < $min || $len > $max) {
                     $dto->errors[] = 'DNI inválido';
                 }
             }
@@ -128,7 +151,7 @@ class DocenteAssignmentImportService
             } elseif ($dto->dni && isset($docentesPorDni[$dto->dni])) {
                 $doc = $docentesPorDni[$dto->dni];
             }
-            if (!$doc) {
+            if (! $doc) {
                 $dto->errors[] = 'Docente no encontrado';
             } else {
                 // Usamos el código (doc_vcCodigo) como PK lógico para procesos de asignación
@@ -145,7 +168,7 @@ class DocenteAssignmentImportService
             if ($dto->cargoNombre) {
                 $cargoKey = $normKey($dto->cargoNombre);
                 $maestroCargo = $maestroPorNombre[$cargoKey] ?? null;
-                if (!$maestroCargo) {
+                if (! $maestroCargo) {
                     $dto->errors[] = 'Cargo no existe en ExperienciaAdmisionMaestro';
                 } else {
                     // Si ya conocemos procesoFechaId podemos validar instancia específica
@@ -153,8 +176,23 @@ class DocenteAssignmentImportService
                         $idx = $maestroCargo->expadmma_iCodigo.'|'.$dto->procesoFechaId;
                         if (isset($instanciaCargoIndex[$idx])) {
                             $dto->cargoId = $instanciaCargoIndex[$idx];
+                            if ($dto->monto !== null) {
+                                $cargoInstancia = $instanciaCargoMetaIndex[$idx] ?? null;
+                                $montoActual = $cargoInstancia?->expadm_fMonto;
+                                if ($montoActual === null || (float) $montoActual === 0.0) {
+                                    $dto->montoEstado = 'Se aplicará';
+                                    $dto->warnings[] = 'Monto se aplicará porque el cargo está en 0 o null';
+                                } else {
+                                    $dto->montoEstado = 'No se aplicará';
+                                    $dto->warnings[] = 'Monto no se aplicará porque el cargo ya tiene monto';
+                                }
+                            }
                         } else {
                             $dto->warnings[] = 'Instancia cargo para fecha será creada';
+                            if ($dto->monto !== null) {
+                                $dto->montoEstado = 'Se aplicará al crear';
+                                $dto->warnings[] = 'Monto se aplicará al crear la instancia del cargo';
+                            }
                         }
                     } else {
                         // Aún sin fecha válida; diferimos la resolución
@@ -170,7 +208,7 @@ class DocenteAssignmentImportService
             if ($dto->localNombre) {
                 $locKey = $normLocal($dto->localNombre);
                 $localMaestro = $localMaestroMatch[$locKey] ?? null;
-                if (!$localMaestro) {
+                if (! $localMaestro) {
                     $dto->errors[] = 'Local no existe en LocalesMaestro';
                 } else {
                     $dto->localMaestroId = $localMaestro->locma_iCodigo;
@@ -222,7 +260,7 @@ class DocenteAssignmentImportService
             $dto->valid = empty($dto->errors);
             $results->push($dto);
 
-            if ($stopOnFirstError && !$dto->valid) {
+            if ($stopOnFirstError && ! $dto->valid) {
                 break;
             }
         }
@@ -232,26 +270,45 @@ class DocenteAssignmentImportService
 
     public function import(Collection $rows, bool $allowPartial = true, ?string $originalFilename = null): array
     {
-        $imported = 0; $skipped = 0; $errors = [];
-        $localCargoAdjust = [];// key: loc|cargo => ['increment'=>n, 'new'=>bool]
+        $imported = 0;
+        $skipped = 0;
+        $errors = [];
+        $localCargoAdjust = []; // key: loc|cargo => ['increment'=>n, 'new'=>bool]
         DB::transaction(function () use ($rows, $allowPartial, &$imported, &$skipped, &$errors, &$localCargoAdjust) {
             foreach ($rows as $dto) {
-                if (!$dto instanceof DocenteAssignmentRow) continue;
-                if (!$dto->valid) { $skipped++; if(!$allowPartial){ $errors[]='Fila '.$dto->rowNumber.' inválida'; } continue; }
+                if (! $dto instanceof DocenteAssignmentRow) {
+                    continue;
+                }
+                if (! $dto->valid) {
+                    $skipped++;
+                    if (! $allowPartial) {
+                        $errors[] = 'Fila '.$dto->rowNumber.' inválida';
+                    }
+
+                    continue;
+                }
 
                 // Revalidación defensiva duplicado
                 $dup = ProcesoDocente::where('profec_iCodigo', $dto->procesoFechaId)
                     ->where('doc_vcCodigo', $dto->codigo)
                     ->where('prodoc_iAsignacion', 1)
                     ->first();
-                if ($dup) { $skipped++; continue; }
+                if ($dup) {
+                    $skipped++;
+
+                    continue;
+                }
 
                 // Guard clause: si no hay procesoFechaId no continuamos (no se puede crear contexto)
-                if (!$dto->procesoFechaId) { $skipped++; continue; }
+                if (! $dto->procesoFechaId) {
+                    $skipped++;
+
+                    continue;
+                }
 
                 // Asegurar maestro + instancia locales (localId debe ser instancia real loc_iCodigo)
                 if ($dto->localNombre) {
-                    if (!$dto->localId) {
+                    if (! $dto->localId) {
                         // Si no había instancia existente, crear maestro (si falta) e instancia ahora
                         $maestro = $dto->localMaestroId
                             ? LocalesMaestro::firstOrCreate(['locma_iCodigo' => $dto->localMaestroId], ['locma_vcNombre' => $dto->localNombre])
@@ -263,9 +320,9 @@ class DocenteAssignmentImportService
                         $dto->localId = $inst->loc_iCodigo;
                     } else {
                         // Validar que localId realmente existe como instancia; si no, recrear
-                        if (!Locales::where('loc_iCodigo', $dto->localId)->exists()) {
+                        if (! Locales::where('loc_iCodigo', $dto->localId)->exists()) {
                             $maestroId = $dto->localMaestroId ?? null;
-                            if (!$maestroId) {
+                            if (! $maestroId) {
                                 // fallback: buscar maestro por nombre
                                 $maestro = LocalesMaestro::firstOrCreate(['locma_vcNombre' => $dto->localNombre]);
                                 $maestroId = $maestro->locma_iCodigo;
@@ -280,7 +337,7 @@ class DocenteAssignmentImportService
                 }
 
                 // Crear Cargo si no existía (maestro + instancia) - requiere procesoFechaId
-                if ($dto->procesoFechaId && !$dto->cargoId && $dto->cargoNombre) {
+                if ($dto->procesoFechaId && ! $dto->cargoId && $dto->cargoNombre) {
                     $maestro = ExperienciaAdmisionMaestro::firstOrCreate(['expadmma_vcNombre' => $dto->cargoNombre]);
                     $instancia = ExperienciaAdmision::firstOrCreate(
                         [
@@ -294,6 +351,20 @@ class DocenteAssignmentImportService
                     $dto->cargoId = $instancia->expadm_iCodigo;
                 }
 
+                if ($dto->cargoId && $dto->monto !== null) {
+                    $cargoInstancia = ExperienciaAdmision::where('expadm_iCodigo', $dto->cargoId)
+                        ->lockForUpdate()
+                        ->first();
+
+                    if ($cargoInstancia) {
+                        $montoActual = $cargoInstancia->expadm_fMonto;
+                        if ($montoActual === null || (float) $montoActual === 0.0) {
+                            $cargoInstancia->expadm_fMonto = $dto->monto;
+                            $cargoInstancia->save();
+                        }
+                    }
+                }
+
                 // Asegurar LocalCargo y actualizar ocupados
                 if ($dto->localId && $dto->cargoId) {
                     $keyLC = $dto->localId.'|'.$dto->cargoId;
@@ -301,24 +372,25 @@ class DocenteAssignmentImportService
                         ->where('expadm_iCodigo', $dto->cargoId)
                         ->lockForUpdate()
                         ->first();
-                    if (!$localCargo) {
-                       // $vac = config('import.default_local_cargo_vacantes', 9999);
+                    if (! $localCargo) {
+                        // $vac = config('import.default_local_cargo_vacantes', 9999);
                         $localCargo = LocalCargo::create([
                             'loc_iCodigo' => $dto->localId,
                             'expadm_iCodigo' => $dto->cargoId,
                             'loccar_iVacante' => 0, // se ajustará luego
                             'loccar_iOcupado' => 0,
                         ]);
-                        $localCargoAdjust[$keyLC] = ['increment'=>1,'model'=>$localCargo,'new'=>true];
+                        $localCargoAdjust[$keyLC] = ['increment' => 1, 'model' => $localCargo, 'new' => true];
                     } else {
                         // Cupo se evaluará tras consolidar increments
-                        if (!isset($localCargoAdjust[$keyLC])) $localCargoAdjust[$keyLC] = ['increment'=>0,'model'=>$localCargo,'new'=>false];
+                        if (! isset($localCargoAdjust[$keyLC])) {
+                            $localCargoAdjust[$keyLC] = ['increment' => 0, 'model' => $localCargo, 'new' => false];
+                        }
                         $localCargoAdjust[$keyLC]['increment']++;
                     }
                 }
 
-                    $ip = request()->header('X-Forwarded-For') ? explode(',', request()->header('X-Forwarded-For'))[0] : request()->ip();
-
+                $ip = request()->header('X-Forwarded-For') ? explode(',', request()->header('X-Forwarded-For'))[0] : request()->ip();
 
                 // Reactivación: si existe registro inactivo (prodoc_iAsignacion=0) se actualiza en vez de crear
                 $pending = ProcesoDocente::where('profec_iCodigo', $dto->procesoFechaId)
@@ -332,8 +404,8 @@ class DocenteAssignmentImportService
                     $pending->prodoc_iAsignacion = 1;
                     $pending->prodoc_dtFechaAsignacion = now();
                     $pending->prodoc_vcIpAsignacion = $ip;
-                    
-                    $pending->user_id = auth()->id();
+
+                    $pending->user_id = Auth::id();
 
                     $pending->save();
                     $imported++;
@@ -345,8 +417,8 @@ class DocenteAssignmentImportService
                         'loc_iCodigo' => $dto->localId,
                         'prodoc_iAsignacion' => 1,
                         'prodoc_dtFechaAsignacion' => now(),
-                        'user_id' => auth()->id(),
-                        'prodoc_vcIpAsignacion'=> $ip
+                        'user_id' => Auth::id(),
+                        'prodoc_vcIpAsignacion' => $ip,
                     ]);
                     $imported++;
                 }
@@ -356,7 +428,7 @@ class DocenteAssignmentImportService
             foreach ($localCargoAdjust as $k => $info) {
                 /** @var LocalCargo $lc */
                 $lc = $info['model'];
-                $increment = (int)($info['increment'] ?? 0);
+                $increment = (int) ($info['increment'] ?? 0);
                 if ($info['new']) {
                     $lc->loccar_iOcupado = $increment;
                     if ($lc->loccar_iVacante < $lc->loccar_iOcupado) {
@@ -376,9 +448,9 @@ class DocenteAssignmentImportService
             }
         });
         // Auditoría simple (si existe tabla import_job_logs luego se insertará via modelo)
-        if (class_exists(\App\Models\ImportJobLog::class)) {
-            \App\Models\ImportJobLog::create([
-                'user_id' => auth()->id(),
+        if (class_exists(ImportJobLog::class)) {
+            ImportJobLog::create([
+                'user_id' => Auth::id(),
                 'filename_original' => $originalFilename,
                 'total_filas' => $rows->count(),
                 'importadas' => $imported,
@@ -386,7 +458,8 @@ class DocenteAssignmentImportService
                 'errores' => $errors,
             ]);
         }
-        return compact('imported','skipped','errors');
+
+        return compact('imported', 'skipped', 'errors');
     }
 
     public function generateErrorReport(Collection $rows): array
@@ -394,7 +467,9 @@ class DocenteAssignmentImportService
         $out = [];
         foreach ($rows as $dto) {
             /** @var DocenteAssignmentRow $dto */
-            if ($dto->valid) continue;
+            if ($dto->valid) {
+                continue;
+            }
             $out[] = [
                 'fila' => $dto->rowNumber,
                 'codigo' => $dto->codigo,
@@ -406,8 +481,35 @@ class DocenteAssignmentImportService
                 'warnings' => implode('|', $dto->warnings),
             ];
         }
+
         return $out;
     }
 
     // parseFecha y norm ahora provienen de SharedAssignmentImport trait
+
+    private function parseMonto(mixed $raw): ?float
+    {
+        if ($raw === null) {
+            return null;
+        }
+
+        if (is_string($raw)) {
+            $raw = trim($raw);
+            if ($raw === '') {
+                return null;
+            }
+            $raw = str_replace([' ', ','], ['', '.'], $raw);
+        }
+
+        if (! is_numeric($raw)) {
+            return null;
+        }
+
+        $value = (float) $raw;
+        if ($value < 0) {
+            return null;
+        }
+
+        return round($value, 2);
+    }
 }

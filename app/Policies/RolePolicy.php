@@ -3,19 +3,33 @@
 namespace App\Policies;
 
 use App\Models\User;
-use Spatie\Permission\Models\Role;
 use Illuminate\Auth\Access\HandlesAuthorization;
+use Spatie\Permission\Models\Role;
 
 class RolePolicy
 {
     use HandlesAuthorization;
 
     /**
+     * Accept both legacy permission keys and Shield v4 keys.
+     */
+    private function canAny(User $user, array $permissions): bool
+    {
+        foreach ($permissions as $permission) {
+            if ($user->can($permission)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Determine whether the user can view any models.
      */
     public function viewAny(User $user): bool
     {
-        return $user->can('view_any_role');
+        return $this->canAny($user, ['view_any_role', 'ViewAny:Role']);
     }
 
     /**
@@ -23,7 +37,7 @@ class RolePolicy
      */
     public function view(User $user, Role $role): bool
     {
-        return $user->can('view_role');
+        return $this->canAny($user, ['view_role', 'View:Role']);
     }
 
     /**
@@ -31,7 +45,7 @@ class RolePolicy
      */
     public function create(User $user): bool
     {
-        return $user->can('create_role');
+        return $this->canAny($user, ['create_role', 'Create:Role']);
     }
 
     /**
@@ -39,7 +53,7 @@ class RolePolicy
      */
     public function update(User $user, Role $role): bool
     {
-        return $user->can('update_role');
+        return $this->canAny($user, ['update_role', 'Update:Role']);
     }
 
     /**
@@ -47,7 +61,7 @@ class RolePolicy
      */
     public function delete(User $user, Role $role): bool
     {
-        return $user->can('delete_role');
+        return $this->canAny($user, ['delete_role', 'Delete:Role']);
     }
 
     /**
@@ -55,7 +69,7 @@ class RolePolicy
      */
     public function deleteAny(User $user): bool
     {
-        return $user->can('delete_any_role');
+        return $this->canAny($user, ['delete_any_role', 'DeleteAny:Role']);
     }
 
     /**
@@ -63,7 +77,7 @@ class RolePolicy
      */
     public function forceDelete(User $user, Role $role): bool
     {
-        return $user->can('{{ ForceDelete }}');
+        return $this->canAny($user, ['force_delete_role', 'ForceDelete:Role']);
     }
 
     /**
@@ -71,7 +85,7 @@ class RolePolicy
      */
     public function forceDeleteAny(User $user): bool
     {
-        return $user->can('{{ ForceDeleteAny }}');
+        return $this->canAny($user, ['force_delete_any_role', 'ForceDeleteAny:Role']);
     }
 
     /**
@@ -79,7 +93,7 @@ class RolePolicy
      */
     public function restore(User $user, Role $role): bool
     {
-        return $user->can('{{ Restore }}');
+        return $this->canAny($user, ['restore_role', 'Restore:Role']);
     }
 
     /**
@@ -87,7 +101,7 @@ class RolePolicy
      */
     public function restoreAny(User $user): bool
     {
-        return $user->can('{{ RestoreAny }}');
+        return $this->canAny($user, ['restore_any_role', 'RestoreAny:Role']);
     }
 
     /**
@@ -95,7 +109,7 @@ class RolePolicy
      */
     public function replicate(User $user, Role $role): bool
     {
-        return $user->can('{{ Replicate }}');
+        return $this->canAny($user, ['replicate_role', 'Replicate:Role']);
     }
 
     /**
@@ -103,6 +117,6 @@ class RolePolicy
      */
     public function reorder(User $user): bool
     {
-        return $user->can('{{ Reorder }}');
+        return $this->canAny($user, ['reorder_role', 'Reorder:Role']);
     }
 }

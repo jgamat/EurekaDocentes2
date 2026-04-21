@@ -2,32 +2,29 @@
 
 namespace App\Providers\Filament;
 
-use Filament\Http\Middleware\Authenticate;
+use App\Filament\Pages\Auth\Login as CustomLogin;
+use App\Http\Middleware\LoadContext;
+use App\Http\Middleware\RateLimitLogin;
+use App\Http\Middleware\SetPanelLocale;
 use BezhanSalleh\FilamentShield\FilamentShieldPlugin;
+use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
+use Filament\Navigation\NavigationGroup;
 use Filament\Pages;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
 use Filament\Widgets;
-use Hasnayeen\Themes\Http\Middleware\SetTheme;
-use Hasnayeen\Themes\ThemesPlugin;
-use Filament\Navigation\NavigationGroup;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
-use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Jeffgreco13\FilamentBreezy\BreezyCore;
 use Swis\Filament\Backgrounds\FilamentBackgroundsPlugin;
-use App\Http\Middleware\RateLimitLogin;
-use App\Filament\Pages\Auth\Login as CustomLogin;
-use App\Http\Middleware\SetPanelLocale;
-use Tapp\FilamentAuthenticationLog\FilamentAuthenticationLogPlugin;
-use App\Http\Middleware\LoadContext;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -36,47 +33,47 @@ class AdminPanelProvider extends PanelProvider
         return $panel
             ->default()
             ->id('admin')
-           
+
             ->path('admin')
+            ->viteTheme('resources/css/filament/admin/theme.css')
             ->passwordReset()
             ->login(CustomLogin::class)
             ->colors([
                 'primary' => Color::Amber,
             ])
-            
+
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([
                 Pages\Dashboard::class,
             ])
             ->navigationGroups([
-                
+
                 NavigationGroup::make()
                     ->label('Credenciales')
                     ->collapsed(false),
                 NavigationGroup::make()
-                    ->label('Reportes')                    
-                    ->collapsed(false),                
-                NavigationGroup::make()
-                    ->label('Docentes')                    
+                    ->label('Reportes')
                     ->collapsed(false),
                 NavigationGroup::make()
-                    ->label('Administrativos')                    
+                    ->label('Docentes')
                     ->collapsed(false),
                 NavigationGroup::make()
-                    ->label('Alumnos')                    
+                    ->label('Administrativos')
                     ->collapsed(false),
                 NavigationGroup::make()
-                    ->label('Maestros')                    
+                    ->label('Alumnos')
                     ->collapsed(false),
                 NavigationGroup::make()
-                    ->label('Administración de Locales')                    
+                    ->label('Maestros')
                     ->collapsed(false),
                 NavigationGroup::make()
-                    ->label('Administración de Procesos')                    
+                    ->label('Administración de Locales')
+                    ->collapsed(false),
+                NavigationGroup::make()
+                    ->label('Administración de Procesos')
                     ->collapsed(false),
 
-                    
             ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([
@@ -91,12 +88,11 @@ class AdminPanelProvider extends PanelProvider
                 RateLimitLogin::class,
                 SetPanelLocale::class,
                 ShareErrorsFromSession::class,
-                VerifyCsrfToken::class,
+                PreventRequestForgery::class,
                 SubstituteBindings::class,
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
 
-                SetTheme::class,
                 LoadContext::class,
             ])
             ->plugins([
@@ -104,12 +100,10 @@ class AdminPanelProvider extends PanelProvider
                 BreezyCore::make()
                     ->myProfile(shouldRegisterUserMenu: true),
                 FilamentBackgroundsPlugin::make(),
-                FilamentAuthenticationLogPlugin::make(),
-                ThemesPlugin::make(),
             ])
             ->authMiddleware([
                 Authenticate::class,
-                
+
             ])
             ->viteTheme('resources/css/filament/admin/theme.css');
     }

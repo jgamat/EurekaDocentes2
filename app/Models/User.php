@@ -2,21 +2,24 @@
 
 namespace App\Models;
 
+use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
-use Filament\Panel;  
+use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
-use Rappasoft\LaravelAuthenticationLog\Traits\AuthenticationLoggable;
+
+// use Rappasoft\LaravelAuthenticationLog\Traits\AuthenticationLoggable;
 
 class User extends Authenticatable implements FilamentUser
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
+    /** @use HasFactory<UserFactory> */
     use HasFactory;
-    use Notifiable;
+
     use HasRoles;
-    use AuthenticationLoggable;
+    use Notifiable;
+    // use AuthenticationLoggable;
 
     protected $hidden = [
         'password',
@@ -34,5 +37,4 @@ class User extends Authenticatable implements FilamentUser
         // Por ahora, con que devuelva 'true' es suficiente para permitir el acceso.
         return true;
     }
-
 }

@@ -9,5 +9,5 @@ class AsignarLocales extends Page
 {
     protected static string $resource = AsignarLocalesResource::class;
 
-    protected static string $view = 'filament.resources.asignar-locales-resource.pages.asignar-locales';
+    protected string $view = 'filament.resources.asignar-locales-resource.pages.asignar-locales';
 }

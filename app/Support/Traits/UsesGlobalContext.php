@@ -16,8 +16,10 @@ trait UsesGlobalContext
      */
     protected function fechaActualPlaceholder(string $fechaField = 'proceso_fecha_id'): Placeholder
     {
-        return Placeholder::make('')
-            ->label(null)
+        $name = 'fecha_actual_'.preg_replace('/[^a-zA-Z0-9_]/', '_', $fechaField);
+
+        return Placeholder::make($name)
+            ->hiddenLabel()
             ->content(function (callable $get) use ($fechaField) {
                 $id = $get($fechaField);
                 $valor = '-';
@@ -28,7 +30,11 @@ trait UsesGlobalContext
                         if ($d instanceof \DateTimeInterface) {
                             $valor = $d->format('d/m/Y');
                         } elseif (is_string($d) && $d !== '') {
-                            try { $valor = Carbon::parse($d)->format('d/m/Y'); } catch (\Throwable $e) { $valor = (string) $id; }
+                            try {
+                                $valor = Carbon::parse($d)->format('d/m/Y');
+                            } catch (\Throwable $e) {
+                                $valor = (string) $id;
+                            }
                         } else {
                             $valor = (string) $id;
                         }
@@ -36,7 +42,8 @@ trait UsesGlobalContext
                         $valor = (string) $id;
                     }
                 }
-                return 'Fecha Actual: ' . $valor;
+
+                return 'Fecha Actual: '.$valor;
             });
     }
 
@@ -55,7 +62,7 @@ trait UsesGlobalContext
                 $payload[$field] = $ctx->fechaId();
             }
         }
-        if (!empty($payload) && method_exists($this, 'form')) {
+        if (! empty($payload) && method_exists($this, 'form')) {
             $this->form->fill($payload);
         }
     }
@@ -82,7 +89,7 @@ trait UsesGlobalContext
         foreach ($resetFields as $k) {
             $payload[$k] = null;
         }
-        if (!empty($payload) && method_exists($this, 'form')) {
+        if (! empty($payload) && method_exists($this, 'form')) {
             $this->form->fill($payload);
         }
         if ($notificationBody) {

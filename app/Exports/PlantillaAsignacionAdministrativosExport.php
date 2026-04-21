@@ -9,13 +9,13 @@ class PlantillaAsignacionAdministrativosExport implements FromArray, WithHeading
 {
     public function headings(): array
     {
-    return ['codigo','dni','nombres','cargo','local','fecha'];
+        return ['codigo', 'dni', 'nombres', 'cargo', 'local', 'fecha', 'monto'];
     }
 
     public function array(): array
     {
         return [
-            ['ADM001','12345678','GARCIA DIAZ LUIS','CARGO X','LOCAL Y','2025-01-01'],
+            ['ADM001', '12345678', 'GARCIA DIAZ LUIS', 'CARGO X', 'LOCAL Y', '2025-01-01', '120.00'],
         ];
     }
 }

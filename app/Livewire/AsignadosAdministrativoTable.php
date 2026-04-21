@@ -2,26 +2,32 @@
 
 namespace App\Livewire;
 
-use App\Models\ProcesoAdministrativo;
 use App\Models\LocalCargo;
+use App\Models\ProcesoAdministrativo;
+use Filament\Actions\Action;
+use Filament\Actions\Concerns\InteractsWithActions;
+use Filament\Actions\Contracts\HasActions;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
-use Filament\Tables\Actions\Action;
+use Filament\Notifications\Notification;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
-use Filament\Tables\Table;
 use Filament\Tables\Filters\Filter;
+use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
-class AsignadosAdministrativoTable extends Component implements HasForms, HasTable
+class AsignadosAdministrativoTable extends Component implements HasActions, HasForms, HasTable
 {
-    use InteractsWithForms, InteractsWithTable;
+    use InteractsWithActions, InteractsWithForms, InteractsWithTable;
 
     public ?int $procesoFechaId = null;
+
     public ?int $localId = null;
+
     public ?int $experienciaAdmisionId = null;
 
     #[On('contextoActualizado')]
@@ -34,9 +40,9 @@ class AsignadosAdministrativoTable extends Component implements HasForms, HasTab
 
     public function table(Table $table): Table
     {
-    return $table
+        return $table
             ->query(function () {
-                if (!$this->procesoFechaId || !$this->localId || !$this->experienciaAdmisionId) {
+                if (! $this->procesoFechaId || ! $this->localId || ! $this->experienciaAdmisionId) {
                     return ProcesoAdministrativo::query()->whereRaw('1 = 0');
                 }
 
@@ -64,12 +70,13 @@ class AsignadosAdministrativoTable extends Component implements HasForms, HasTab
                 Filter::make('dni')
                     ->label('DNI')
                     ->form([
-                        \Filament\Forms\Components\TextInput::make('dni')->label('DNI')->placeholder('Ej. 12345678'),
+                        TextInput::make('dni')->label('DNI')->placeholder('Ej. 12345678'),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
-                        if (!filled($data['dni'] ?? null)) {
+                        if (! filled($data['dni'] ?? null)) {
                             return $query;
                         }
+
                         return $query->whereHas('administrativo', function (Builder $q) use ($data) {
                             $q->where('adm_vcDni', 'like', '%'.$data['dni'].'%');
                         });
@@ -77,12 +84,13 @@ class AsignadosAdministrativoTable extends Component implements HasForms, HasTab
                 Filter::make('nombre')
                     ->label('Nombre')
                     ->form([
-                        \Filament\Forms\Components\TextInput::make('nombre')->label('Nombre')->placeholder('Parte del nombre'),
+                        TextInput::make('nombre')->label('Nombre')->placeholder('Parte del nombre'),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
-                        if (!filled($data['nombre'] ?? null)) {
+                        if (! filled($data['nombre'] ?? null)) {
                             return $query;
                         }
+
                         return $query->whereHas('administrativo', function (Builder $q) use ($data) {
                             $q->where('adm_vcNombres', 'like', '%'.$data['nombre'].'%');
                         });
@@ -108,14 +116,14 @@ class AsignadosAdministrativoTable extends Component implements HasForms, HasTab
                         ]);
                     })
                     ->form([
-                        \Filament\Forms\Components\TextInput::make('nombres')->label('Administrativo')->disabled(),
-                        \Filament\Forms\Components\TextInput::make('dni')->label('DNI')->disabled(),
-                        \Filament\Forms\Components\TextInput::make('codigo')->label('Código')->disabled(),
-                        \Filament\Forms\Components\TextInput::make('cargo')->label('Cargo')->disabled(),
-                        \Filament\Forms\Components\TextInput::make('local')->label('Local')->disabled(),
-                        \Filament\Forms\Components\TextInput::make('fecha')->label('Fecha')->disabled(),
-                        \Filament\Forms\Components\TextInput::make('usuario')->label('Usuario Asignador')->disabled(),
-                        \Filament\Forms\Components\TextInput::make('fecha_asignacion')->label('Fecha de Asignación')->disabled(),
+                        TextInput::make('nombres')->label('Administrativo')->disabled(),
+                        TextInput::make('dni')->label('DNI')->disabled(),
+                        TextInput::make('codigo')->label('Código')->disabled(),
+                        TextInput::make('cargo')->label('Cargo')->disabled(),
+                        TextInput::make('local')->label('Local')->disabled(),
+                        TextInput::make('fecha')->label('Fecha')->disabled(),
+                        TextInput::make('usuario')->label('Usuario Asignador')->disabled(),
+                        TextInput::make('fecha_asignacion')->label('Fecha de Asignación')->disabled(),
                     ]),
                 Action::make('desasignar')
                     ->label('Desasignar')
@@ -124,11 +132,12 @@ class AsignadosAdministrativoTable extends Component implements HasForms, HasTab
                     ->color('danger')
                     ->action(function ($record, $livewire) {
                         if ($record->user_id !== auth()->id()) {
-                            \Filament\Notifications\Notification::make()
+                            Notification::make()
                                 ->title('Acción no permitida')
                                 ->body('Solo el usuario que realizó la asignación puede desasignar este registro.')
                                 ->danger()
                                 ->send();
+
                             return;
                         }
 
@@ -160,9 +169,10 @@ class AsignadosAdministrativoTable extends Component implements HasForms, HasTab
 
     protected function getAsignadosCount(): int
     {
-        if (!$this->procesoFechaId || !$this->localId || !$this->experienciaAdmisionId) {
+        if (! $this->procesoFechaId || ! $this->localId || ! $this->experienciaAdmisionId) {
             return 0;
         }
+
         return ProcesoAdministrativo::query()
             ->where('profec_iCodigo', $this->procesoFechaId)
             ->where('loc_iCodigo', $this->localId)

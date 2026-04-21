@@ -3,25 +3,26 @@
 namespace App\Filament\Pages;
 
 use App\Models\Proceso;
-use App\Models\ProcesoFecha;
 use App\Support\CurrentContext;
-use App\Support\Traits\UsesGlobalContext;
+use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 use Filament\Pages\Page;
 use Illuminate\Support\Facades\DB;
-use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 
 class BuscarPersonalPlanilla extends Page
 {
-    protected static ?string $navigationIcon = 'heroicon-o-document-text';
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-document-text';
 
-    protected static string $view = 'filament.pages.buscar-personal-planilla';
+    protected string $view = 'filament.pages.buscar-personal-planilla';
 
-       use HasPageShield;
+    use HasPageShield;
 
     // Filtros / Estado de búsqueda (se alimentan desde contexto global)
     public ?int $proceso_id = null;
+
     public ?int $proceso_fecha_id = null;
+
     public string $tipo = 'docente'; // docente | administrativo | tercero_cas | alumno
+
     public string $q = '';
 
     // Resultados
@@ -69,8 +70,8 @@ class BuscarPersonalPlanilla extends Page
                 ->join('docente as d', 'd.doc_vcCodigo', '=', 'pd.doc_vcCodigo')
                 ->join('procesodocente as prd', function ($j) use ($fechaId) {
                     $j->on('prd.doc_vcCodigo', '=', 'd.doc_vcCodigo')
-                      ->where('prd.profec_iCodigo', '=', $fechaId)
-                      ->where('prd.prodoc_iAsignacion', '=', 1);
+                        ->where('prd.profec_iCodigo', '=', $fechaId)
+                        ->where('prd.prodoc_iAsignacion', '=', 1);
                 })
                 ->join('locales as l', 'l.loc_iCodigo', '=', 'prd.loc_iCodigo')
                 ->join('localMaestro as lm', 'lm.locma_iCodigo', '=', 'l.locma_iCodigo')
@@ -80,11 +81,11 @@ class BuscarPersonalPlanilla extends Page
                 ->where('p.profec_iCodigo', $fechaId)
                 ->where('p.pla_bActivo', 1)
                 ->when($term !== '', function ($q) use ($term) {
-                    $like = '%' . str_replace(' ', '%', $term) . '%';
+                    $like = '%'.str_replace(' ', '%', $term).'%';
                     $q->where(function ($w) use ($like) {
                         $w->where('d.doc_vcCodigo', 'like', $like)
-                          ->orWhere('d.doc_vcDni', 'like', $like)
-                          ->orWhere(DB::raw("CONCAT(d.doc_vcPaterno,' ',d.doc_vcMaterno,' ',d.doc_vcNombre)"), 'like', $like);
+                            ->orWhere('d.doc_vcDni', 'like', $like)
+                            ->orWhere(DB::raw("CONCAT(d.doc_vcPaterno,' ',d.doc_vcMaterno,' ',d.doc_vcNombre)"), 'like', $like);
                     });
                 })
                 ->orderBy('p.pla_iNumero')
@@ -96,8 +97,8 @@ class BuscarPersonalPlanilla extends Page
                 ->join('administrativo as a', 'a.adm_vcDni', '=', 'pa.adm_vcDni')
                 ->join('procesoadministrativo as pra', function ($j) use ($fechaId) {
                     $j->on('pra.adm_vcDni', '=', 'a.adm_vcDni')
-                      ->where('pra.profec_iCodigo', '=', $fechaId)
-                      ->where('pra.proadm_iAsignacion', '=', 1);
+                        ->where('pra.profec_iCodigo', '=', $fechaId)
+                        ->where('pra.proadm_iAsignacion', '=', 1);
                 })
                 ->join('locales as l', 'l.loc_iCodigo', '=', 'pra.loc_iCodigo')
                 ->join('localMaestro as lm', 'lm.locma_iCodigo', '=', 'l.locma_iCodigo')
@@ -107,15 +108,15 @@ class BuscarPersonalPlanilla extends Page
                 ->where('p.profec_iCodigo', $fechaId)
                 ->where('p.pla_bActivo', 1)
                 ->when($term !== '', function ($q) use ($term) {
-                    $like = '%' . str_replace(' ', '%', $term) . '%';
+                    $like = '%'.str_replace(' ', '%', $term).'%';
                     $q->where(function ($w) use ($like) {
                         $w->where('a.adm_vcCodigo', 'like', $like)
-                          ->orWhere('a.adm_vcDni', 'like', $like)
-                          ->orWhere('a.adm_vcNombres', 'like', $like);
+                            ->orWhere('a.adm_vcDni', 'like', $like)
+                            ->orWhere('a.adm_vcNombres', 'like', $like);
                     });
                 })
                 ->orderBy('p.pla_iNumero')
-                ->selectRaw("a.adm_vcCodigo as codigo, a.adm_vcDni as dni, a.adm_vcNombres as nombres, lm.locma_vcNombre as local, em.expadmma_vcNombre as cargo, pra.proadm_dtFechaAsignacion as fecha_asignacion, p.pla_iNumero as numero_planilla")
+                ->selectRaw('a.adm_vcCodigo as codigo, a.adm_vcDni as dni, a.adm_vcNombres as nombres, lm.locma_vcNombre as local, em.expadmma_vcNombre as cargo, pra.proadm_dtFechaAsignacion as fecha_asignacion, p.pla_iNumero as numero_planilla')
                 ->get();
         } else { // alumno
             $rows = DB::table('planillaAlumno as pl')
@@ -123,8 +124,8 @@ class BuscarPersonalPlanilla extends Page
                 ->join('alumno as al', 'al.alu_vcCodigo', '=', 'pl.alu_vcCodigo')
                 ->join('procesoalumno as pral', function ($j) use ($fechaId) {
                     $j->on('pral.alu_vcCodigo', '=', 'al.alu_vcCodigo')
-                      ->where('pral.profec_iCodigo', '=', $fechaId)
-                      ->where('pral.proalu_iAsignacion', '=', 1);
+                        ->where('pral.profec_iCodigo', '=', $fechaId)
+                        ->where('pral.proalu_iAsignacion', '=', 1);
                 })
                 ->join('locales as l', 'l.loc_iCodigo', '=', 'pral.loc_iCodigo')
                 ->join('localMaestro as lm', 'lm.locma_iCodigo', '=', 'l.locma_iCodigo')
@@ -134,11 +135,11 @@ class BuscarPersonalPlanilla extends Page
                 ->where('p.profec_iCodigo', $fechaId)
                 ->where('p.pla_bActivo', 1)
                 ->when($term !== '', function ($q) use ($term) {
-                    $like = '%' . str_replace(' ', '%', $term) . '%';
+                    $like = '%'.str_replace(' ', '%', $term).'%';
                     $q->where(function ($w) use ($like) {
                         $w->where('al.alu_vcCodigo', 'like', $like)
-                          ->orWhere('al.alu_vcDni', 'like', $like)
-                          ->orWhere(DB::raw("CONCAT(al.alu_vcPaterno,' ',al.alu_vcMaterno,' ',al.alu_vcNombre)"), 'like', $like);
+                            ->orWhere('al.alu_vcDni', 'like', $like)
+                            ->orWhere(DB::raw("CONCAT(al.alu_vcPaterno,' ',al.alu_vcMaterno,' ',al.alu_vcNombre)"), 'like', $like);
                     });
                 })
                 ->orderBy('p.pla_iNumero')

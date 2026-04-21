@@ -2,8 +2,8 @@
 
 namespace App\Policies;
 
-use App\Models\User;
 use App\Models\Proceso;
+use App\Models\User;
 use Illuminate\Auth\Access\HandlesAuthorization;
 
 class ProcesoPolicy
@@ -11,11 +11,25 @@ class ProcesoPolicy
     use HandlesAuthorization;
 
     /**
+     * Accept both legacy permission keys and Shield v4 keys.
+     */
+    private function canAny(User $user, array $permissions): bool
+    {
+        foreach ($permissions as $permission) {
+            if ($user->can($permission)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Determine whether the user can view any models.
      */
     public function viewAny(User $user): bool
     {
-        return $user->can('view_any_proceso');
+        return $this->canAny($user, ['view_any_proceso', 'ViewAny:Proceso']);
     }
 
     /**
@@ -23,7 +37,7 @@ class ProcesoPolicy
      */
     public function view(User $user, Proceso $proceso): bool
     {
-        return $user->can('view_proceso');
+        return $this->canAny($user, ['view_proceso', 'View:Proceso']);
     }
 
     /**
@@ -31,7 +45,7 @@ class ProcesoPolicy
      */
     public function create(User $user): bool
     {
-        return $user->can('create_proceso');
+        return $this->canAny($user, ['create_proceso', 'Create:Proceso']);
     }
 
     /**
@@ -39,7 +53,7 @@ class ProcesoPolicy
      */
     public function update(User $user, Proceso $proceso): bool
     {
-        return $user->can('update_proceso');
+        return $this->canAny($user, ['update_proceso', 'Update:Proceso']);
     }
 
     /**
@@ -47,7 +61,7 @@ class ProcesoPolicy
      */
     public function delete(User $user, Proceso $proceso): bool
     {
-        return $user->can('delete_proceso');
+        return $this->canAny($user, ['delete_proceso', 'Delete:Proceso']);
     }
 
     /**
@@ -55,7 +69,7 @@ class ProcesoPolicy
      */
     public function deleteAny(User $user): bool
     {
-        return $user->can('delete_any_proceso');
+        return $this->canAny($user, ['delete_any_proceso', 'DeleteAny:Proceso']);
     }
 
     /**
@@ -63,7 +77,7 @@ class ProcesoPolicy
      */
     public function forceDelete(User $user, Proceso $proceso): bool
     {
-        return $user->can('force_delete_proceso');
+        return $this->canAny($user, ['force_delete_proceso', 'ForceDelete:Proceso']);
     }
 
     /**
@@ -71,7 +85,7 @@ class ProcesoPolicy
      */
     public function forceDeleteAny(User $user): bool
     {
-        return $user->can('force_delete_any_proceso');
+        return $this->canAny($user, ['force_delete_any_proceso', 'ForceDeleteAny:Proceso']);
     }
 
     /**
@@ -79,7 +93,7 @@ class ProcesoPolicy
      */
     public function restore(User $user, Proceso $proceso): bool
     {
-        return $user->can('restore_proceso');
+        return $this->canAny($user, ['restore_proceso', 'Restore:Proceso']);
     }
 
     /**
@@ -87,7 +101,7 @@ class ProcesoPolicy
      */
     public function restoreAny(User $user): bool
     {
-        return $user->can('restore_any_proceso');
+        return $this->canAny($user, ['restore_any_proceso', 'RestoreAny:Proceso']);
     }
 
     /**
@@ -95,7 +109,7 @@ class ProcesoPolicy
      */
     public function replicate(User $user, Proceso $proceso): bool
     {
-        return $user->can('replicate_proceso');
+        return $this->canAny($user, ['replicate_proceso', 'Replicate:Proceso']);
     }
 
     /**
@@ -103,6 +117,6 @@ class ProcesoPolicy
      */
     public function reorder(User $user): bool
     {
-        return $user->can('reorder_proceso');
+        return $this->canAny($user, ['reorder_proceso', 'Reorder:Proceso']);
     }
 }

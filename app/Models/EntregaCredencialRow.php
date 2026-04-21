@@ -8,10 +8,17 @@ class EntregaCredencialRow extends Model
 {
     // Modelo sólo para lectura sobre el alias del subquery
     protected $table = 'u';
+
     protected $primaryKey = 'row_key';
+
+    protected $keyType = 'string';
+
     public $incrementing = false;
+
     public $timestamps = false;
+
     protected $guarded = [];
+
     protected $casts = [
         'monto' => 'decimal:2',
     ];

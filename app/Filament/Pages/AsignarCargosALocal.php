@@ -1,46 +1,49 @@
 <?php
 
 namespace App\Filament\Pages;
+
 use App\Models\ExperienciaAdmision;
 use App\Models\ExperienciaAdmisionMaestro;
 use App\Models\Locales;
+use App\Models\Proceso;
+use App\Models\ProcesoFecha;
+use App\Support\CurrentContext;
+use App\Support\Traits\UsesGlobalContext;
+use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Concerns\InteractsWithForms;
-use Filament\Forms\Contracts\HasForms;
-use Filament\Forms\Form;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
-use Illuminate\Support\Collection;
-use BezhanSalleh\FilamentShield\Traits\HasPageShield;
-use App\Support\Traits\UsesGlobalContext;
-use App\Support\CurrentContext;
-
-
+use Filament\Schemas\Schema;
 
 class AsignarCargosALocal extends Page
 {
-    use InteractsWithForms;
     use HasPageShield;
+    use InteractsWithForms;
     use UsesGlobalContext;
 
     // Evita limpiar el local cuando restauramos contexto internamente
     protected bool $suppressLocalReset = false;
 
-    protected static ?string $navigationIcon = 'heroicon-o-user-group';
-    protected static string $view = 'filament.pages.asignar-cargos-a-local';
-   protected static ?string $navigationGroup = 'Administración de Locales';
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-user-group';
+
+    protected string $view = 'filament.pages.asignar-cargos-a-local';
+
+    protected static string|\UnitEnum|null $navigationGroup = 'Administración de Locales';
+
     protected static ?string $navigationLabel = 'Agregar Cargos a Local';
 
     public ?array $data = [];
+
     protected $listeners = ['context-changed' => 'onContextChanged'];
 
     public function mount(): void
     {
         // Inicializar desde contexto global y dejar otros campos vacíos
-        $this->fillContextDefaults(['proceso_id','proceso_fecha_id']);
+        $this->fillContextDefaults(['proceso_id', 'proceso_fecha_id']);
         // Asegurar integridad del contexto al cargar
         $this->ensureContextIntegrity();
         $this->form->fill(array_merge([
@@ -48,20 +51,20 @@ class AsignarCargosALocal extends Page
             'asignaciones' => [],
         ], $this->form->getState()));
     }
-    
-    public function form(Form $form): Form
+
+    public function form(Schema $form): Schema
     {
         return $form
             ->schema([
                 $this->fechaActualPlaceholder('proceso_fecha_id'),
                 Select::make('proceso_id')
                     ->label('Proceso Abierto')
-                    ->options(fn()=> \App\Models\Proceso::where('pro_iAbierto', true)->orderBy('pro_vcNombre')->pluck('pro_vcNombre','pro_iCodigo'))
+                    ->options(fn () => Proceso::where('pro_iAbierto', true)->orderBy('pro_vcNombre')->pluck('pro_vcNombre', 'pro_iCodigo'))
                     ->searchable()
                     ->reactive()
-                    ->afterStateUpdated(function(callable $set){
+                    ->afterStateUpdated(function (callable $set) {
                         $set('proceso_fecha_id', null);
-                        if (!$this->suppressLocalReset) {
+                        if (! $this->suppressLocalReset) {
                             $set('local_id', null);
                         }
                     })
@@ -70,22 +73,26 @@ class AsignarCargosALocal extends Page
                     ->dehydrated(true),
                 Select::make('proceso_fecha_id')
                     ->label('Fecha Activa')
-                    ->options(function(callable $get){
+                    ->options(function (callable $get) {
                         $procesoId = $get('proceso_id');
-                        if(!$procesoId) return [];
-                        return \App\Models\ProcesoFecha::where('pro_iCodigo',$procesoId)
+                        if (! $procesoId) {
+                            return [];
+                        }
+
+                        return ProcesoFecha::where('pro_iCodigo', $procesoId)
                             ->where('profec_iActivo', true)
                             ->orderBy('profec_dFecha')
                             ->get()
                             ->mapWithKeys(function ($f) {
-                                $label = $f->profec_dFecha ? (string)$f->profec_dFecha : (string)$f->profec_iCodigo;
+                                $label = $f->profec_dFecha ? (string) $f->profec_dFecha : (string) $f->profec_iCodigo;
+
                                 return [$f->profec_iCodigo => $label];
                             })
                             ->toArray();
                     })
                     ->searchable()
-                    ->afterStateUpdated(function(callable $set){
-                        if (!$this->suppressLocalReset) {
+                    ->afterStateUpdated(function (callable $set) {
+                        if (! $this->suppressLocalReset) {
                             $set('local_id', null);
                         }
                     })
@@ -96,15 +103,19 @@ class AsignarCargosALocal extends Page
                     ->label('Seleccione el Local Asignado al que añadirá cargos')
                     ->options(function (callable $get) {
                         $fechaId = $get('proceso_fecha_id');
-                        if(!$fechaId) return [];
-                        return Locales::with(['procesoFecha','localesMaestro'])
+                        if (! $fechaId) {
+                            return [];
+                        }
+
+                        return Locales::with(['procesoFecha', 'localesMaestro'])
                             ->where('profec_iCodigo', $fechaId)
                             ->get()
-                            ->sortBy(fn($local) => $local->localesMaestro->locma_vcNombre ?? '')
+                            ->sortBy(fn ($local) => $local->localesMaestro->locma_vcNombre ?? '')
                             ->mapWithKeys(function ($local) {
                                 $localNombre = $local->localesMaestro->locma_vcNombre ?? 'N/A';
                                 $fechaNombre = $local->procesoFecha->profec_dFecha ?? 'N/A';
-                                return [$local->loc_iCodigo => "{$localNombre} (Fecha: {$fechaNombre})"]; 
+
+                                return [$local->loc_iCodigo => "{$localNombre} (Fecha: {$fechaNombre})"];
                             })
                             ->toArray();
                     })
@@ -140,16 +151,19 @@ class AsignarCargosALocal extends Page
                             ->label('Tipo de Cargo')
                             ->options(function (callable $get): array {
                                 $localId = $get('../../local_id');
-                                if (!$localId) {
-                                    return \App\Models\ExperienciaAdmisionMaestro::pluck('expadmma_vcNombre', 'expadmma_iCodigo')->toArray();
+                                if (! $localId) {
+                                    return ExperienciaAdmisionMaestro::pluck('expadmma_vcNombre', 'expadmma_iCodigo')->toArray();
                                 }
                                 $local = Locales::find($localId);
-                                if (!$local) { return []; }
+                                if (! $local) {
+                                    return [];
+                                }
                                 $instanciasAsignadasIds = $local->experienciaAdmision()->pluck('experienciaadmision.expadm_iCodigo')->toArray();
                                 $maestrosYaAsignadosIds = ExperienciaAdmision::whereIn('expadm_iCodigo', $instanciasAsignadasIds)
                                     ->pluck('expadmma_iCodigo')
                                     ->unique()
                                     ->toArray();
+
                                 return ExperienciaAdmisionMaestro::whereNotIn('expadmma_iCodigo', $maestrosYaAsignadosIds)
                                     ->pluck('expadmma_vcNombre', 'expadmma_iCodigo')
                                     ->toArray();
@@ -170,7 +184,7 @@ class AsignarCargosALocal extends Page
                     ->collapsible()
                     ->visible(fn (callable $get) => filled($get('local_id'))),
             ])
-        ->statePath('data');
+            ->statePath('data');
     }
 
     /**
@@ -212,63 +226,61 @@ class AsignarCargosALocal extends Page
 
     public function save(): void
     {
-       
-    $data = $this->form->getState();
 
-    // Verificamos que se haya seleccionado un local
-    if (empty($data['local_id'])) {
-        Notification::make()->title('Error')->body('Primero debes seleccionar un local.')->danger()->send();
-        return;
+        $data = $this->form->getState();
+
+        // Verificamos que se haya seleccionado un local
+        if (empty($data['local_id'])) {
+            Notification::make()->title('Error')->body('Primero debes seleccionar un local.')->danger()->send();
+
+            return;
+        }
+
+        // Verificamos que se haya añadido al menos un cargo en el repeater
+        if (empty($data['asignaciones'])) {
+            Notification::make()->title('No hay nada que guardar')->body('Debes añadir al menos un cargo para asignar.')->warning()->send();
+
+            return;
+        }
+
+        // Obtenemos la instancia del Local seleccionado
+        $local = Locales::find($data['local_id']);
+        // Obtenemos el ID de la fecha del proceso a través de la relación del local
+        $fechaId = $local->profec_iCodigo;
+
+        // Preparamos un array para sincronizar la relación final
+        $cargosParaSincronizar = [];
+
+        // Iteramos sobre cada fila que el usuario añadió en el Repeater
+        foreach ($data['asignaciones'] as $asignacion) {
+
+            $cargoMaestroId = $asignacion['expadmma_iCodigo'];
+
+            $instanciaCargo = ExperienciaAdmision::firstOrCreate(
+                [
+                    'profec_iCodigo' => $fechaId,          // Para esta fecha
+                    'expadmma_iCodigo' => $cargoMaestroId, // De este tipo de cargo maestro
+                ]
+            );
+
+            $cargosParaSincronizar[$instanciaCargo->expadm_iCodigo] = [
+                'loccar_iVacante' => $asignacion['loccar_iVacante'],
+
+            ];
+        }
+
+        $local->experienciaAdmision()->syncWithoutDetaching($cargosParaSincronizar);
+
+        // Enviamos notificación de éxito y reseteamos el formulario
+        Notification::make()->title('Cargos asignados con éxito')->success()->send();
+        $this->dispatch('cargosActualizados', localId: $data['local_id']);
+        // Mantener proceso y fecha seleccionados, limpiar solo las asignaciones
+        $this->form->fill([
+            'proceso_id' => $data['proceso_id'] ?? null,
+            'proceso_fecha_id' => $data['proceso_fecha_id'] ?? $fechaId,
+            'local_id' => $data['local_id'],
+            'asignaciones' => [],
+        ]);
+
     }
-    
-    // Verificamos que se haya añadido al menos un cargo en el repeater
-    if (empty($data['asignaciones'])) {
-        Notification::make()->title('No hay nada que guardar')->body('Debes añadir al menos un cargo para asignar.')->warning()->send();
-        return;
-    }
-
-    // Obtenemos la instancia del Local seleccionado
-    $local = Locales::find($data['local_id']);
-    // Obtenemos el ID de la fecha del proceso a través de la relación del local
-    $fechaId = $local->profec_iCodigo;
-
-    // Preparamos un array para sincronizar la relación final
-    $cargosParaSincronizar = [];
-
-    // Iteramos sobre cada fila que el usuario añadió en el Repeater
-    foreach ($data['asignaciones'] as $asignacion) {
-        
-        $cargoMaestroId = $asignacion['expadmma_iCodigo'];
-
-       
-        $instanciaCargo = ExperienciaAdmision::firstOrCreate(
-            [
-                'profec_iCodigo'     => $fechaId,          // Para esta fecha
-                'expadmma_iCodigo' => $cargoMaestroId, // De este tipo de cargo maestro
-            ]
-        );
-
-        
-        $cargosParaSincronizar[$instanciaCargo->expadm_iCodigo] = [
-            'loccar_iVacante' => $asignacion['loccar_iVacante'],
-           
-        ];
-    }
-
-   
-    $local->experienciaAdmision()->syncWithoutDetaching($cargosParaSincronizar);
-
-    // Enviamos notificación de éxito y reseteamos el formulario
-    Notification::make()->title('Cargos asignados con éxito')->success()->send();
-    $this->dispatch('cargosActualizados', localId: $data['local_id']); 
-    // Mantener proceso y fecha seleccionados, limpiar solo las asignaciones
-    $this->form->fill([
-        'proceso_id' => $data['proceso_id'] ?? null,
-        'proceso_fecha_id' => $data['proceso_fecha_id'] ?? $fechaId,
-        'local_id' => $data['local_id'],
-        'asignaciones' => [],
-    ]);
-
-}
-
 }

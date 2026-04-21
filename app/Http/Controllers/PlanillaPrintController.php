@@ -6,6 +6,7 @@ use App\Models\Planilla;
 use App\Models\Proceso;
 use App\Models\ProcesoFecha;
 use App\Models\Tipo;
+use App\Services\PlanillaPdfGenerator;
 use Illuminate\Support\Facades\DB;
 
 class PlanillaPrintController extends Controller
@@ -13,7 +14,7 @@ class PlanillaPrintController extends Controller
     public function reimprimir(int $plaId)
     {
         $pla = Planilla::find($plaId);
-        if (!$pla) {
+        if (! $pla) {
             abort(404, 'Planilla no encontrada');
         }
 
@@ -21,12 +22,12 @@ class PlanillaPrintController extends Controller
         $tipoNombreLower = strtolower($tipo?->tipo_vcNombre ?? '');
         $fechaId = (int) $pla->profec_iCodigo;
 
-    if (str_contains($tipoNombreLower, 'docente')) {
+        if (str_contains($tipoNombreLower, 'docente')) {
             $q = DB::table('planillaDocente as pd')
                 ->join('docente as d', 'd.doc_vcCodigo', '=', 'pd.doc_vcCodigo')
                 ->join('procesodocente as prd', function ($j) use ($fechaId) {
                     $j->on('prd.doc_vcCodigo', '=', 'd.doc_vcCodigo')
-                      ->where('prd.profec_iCodigo', '=', $fechaId);
+                        ->where('prd.profec_iCodigo', '=', $fechaId);
                 })
                 ->join('locales as l', 'l.loc_iCodigo', '=', 'prd.loc_iCodigo')
                 ->join('localMaestro as lm', 'lm.locma_iCodigo', '=', 'l.locma_iCodigo')
@@ -34,13 +35,13 @@ class PlanillaPrintController extends Controller
                 ->join('experienciaadmisionMaestro as em', 'em.expadmma_iCodigo', '=', 'ea.expadmma_iCodigo')
                 ->where('pd.pla_id', $plaId)
                 ->orderBy('pd.pladoc_iOrden')
-        ->selectRaw("pd.pladoc_iOrden as orden, prd.prodoc_iCodigo as cred_numero, d.doc_vcCodigo as codigo, d.doc_vcDni as dni, CONCAT(d.doc_vcPaterno, ' ', d.doc_vcMaterno, ' ', d.doc_vcNombre) as nombres, lm.locma_vcNombre as local_nombre, em.expadmma_vcNombre as cargo_nombre, COALESCE(ea.expadm_fMonto,0) as monto");
+                ->selectRaw("pd.pladoc_iOrden as orden, prd.prodoc_iCodigo as cred_numero, d.doc_vcCodigo as codigo, d.doc_vcDni as dni, CONCAT(d.doc_vcPaterno, ' ', d.doc_vcMaterno, ' ', d.doc_vcNombre) as nombres, lm.locma_vcNombre as local_nombre, em.expadmma_vcNombre as cargo_nombre, COALESCE(ea.expadm_fMonto,0) as monto");
         } elseif (str_contains($tipoNombreLower, 'admin') || str_contains($tipoNombreLower, 'tercero') || str_contains($tipoNombreLower, 'cas')) {
             $q = DB::table('planillaAdministrativo as pa')
                 ->join('administrativo as a', 'a.adm_vcDni', '=', 'pa.adm_vcDni')
                 ->join('procesoadministrativo as pra', function ($j) use ($fechaId) {
                     $j->on('pra.adm_vcDni', '=', 'a.adm_vcDni')
-                      ->where('pra.profec_iCodigo', '=', $fechaId);
+                        ->where('pra.profec_iCodigo', '=', $fechaId);
                 })
                 ->join('locales as l', 'l.loc_iCodigo', '=', 'pra.loc_iCodigo')
                 ->join('localMaestro as lm', 'lm.locma_iCodigo', '=', 'l.locma_iCodigo')
@@ -48,13 +49,13 @@ class PlanillaPrintController extends Controller
                 ->join('experienciaadmisionMaestro as em', 'em.expadmma_iCodigo', '=', 'ea.expadmma_iCodigo')
                 ->where('pa.pla_id', $plaId)
                 ->orderBy('pa.plaadm_iOrden')
-        ->selectRaw("pa.plaadm_iOrden as orden, pra.proadm_iCodigo as cred_numero, a.adm_vcCodigo as codigo, a.adm_vcDni as dni, a.adm_vcNombres as nombres, lm.locma_vcNombre as local_nombre, em.expadmma_vcNombre as cargo_nombre, COALESCE(ea.expadm_fMonto,0) as monto");
+                ->selectRaw('pa.plaadm_iOrden as orden, pra.proadm_iCodigo as cred_numero, a.adm_vcCodigo as codigo, a.adm_vcDni as dni, a.adm_vcNombres as nombres, lm.locma_vcNombre as local_nombre, em.expadmma_vcNombre as cargo_nombre, COALESCE(ea.expadm_fMonto,0) as monto');
         } else {
             $q = DB::table('planillaAlumno as pl')
                 ->join('alumno as al', 'al.alu_vcCodigo', '=', 'pl.alu_vcCodigo')
                 ->join('procesoalumno as pral', function ($j) use ($fechaId) {
                     $j->on('pral.alu_vcCodigo', '=', 'al.alu_vcCodigo')
-                      ->where('pral.profec_iCodigo', '=', $fechaId);
+                        ->where('pral.profec_iCodigo', '=', $fechaId);
                 })
                 ->join('locales as l', 'l.loc_iCodigo', '=', 'pral.loc_iCodigo')
                 ->join('localMaestro as lm', 'lm.locma_iCodigo', '=', 'l.locma_iCodigo')
@@ -62,7 +63,7 @@ class PlanillaPrintController extends Controller
                 ->join('experienciaadmisionMaestro as em', 'em.expadmma_iCodigo', '=', 'ea.expadmma_iCodigo')
                 ->where('pl.pla_id', $plaId)
                 ->orderBy('pl.plaalu_iOrden')
-        ->selectRaw("pl.plaalu_iOrden as orden, pral.proalu_iCodigo as cred_numero, al.alu_vcCodigo as codigo, al.alu_vcDni as dni, CONCAT(al.alu_vcPaterno, ' ', al.alu_vcMaterno, ' ', al.alu_vcNombre) as nombres, lm.locma_vcNombre as local_nombre, em.expadmma_vcNombre as cargo_nombre, COALESCE(ea.expadm_fMonto,0) as monto");
+                ->selectRaw("pl.plaalu_iOrden as orden, pral.proalu_iCodigo as cred_numero, al.alu_vcCodigo as codigo, al.alu_vcDni as dni, CONCAT(al.alu_vcPaterno, ' ', al.alu_vcMaterno, ' ', al.alu_vcNombre) as nombres, lm.locma_vcNombre as local_nombre, em.expadmma_vcNombre as cargo_nombre, COALESCE(ea.expadm_fMonto,0) as monto");
         }
 
         $rows = $q->get();
@@ -77,7 +78,7 @@ class PlanillaPrintController extends Controller
         // Detect flags early for summary logic
         $isTerceroCas = str_contains($tipoNombreLower, 'tercero') || str_contains($tipoNombreLower, 'cas');
         $isAlumno = str_contains($tipoNombreLower, 'alumno');
-        $isAdministrativo = (str_contains($tipoNombreLower, 'admin') && !$isTerceroCas && !$isAlumno);
+        $isAdministrativo = (str_contains($tipoNombreLower, 'admin') && ! $isTerceroCas && ! $isAlumno);
 
         // Agrupación por cargo para resumen (siempre) pero detalle depende del tipo
         $groups = [];
@@ -86,7 +87,37 @@ class PlanillaPrintController extends Controller
             $groups[$cargo][] = $r;
         }
 
-        if ($isAdministrativo) {
+        if ($isTerceroCas || $isAlumno) {
+            // Tercero/CAS y Alumnos: por local, orden por nombres, sin página de resumen.
+            $rowsPerPage = (int) config('planillas.rows_per_page_default', 15);
+            $ordenLocal = 1;
+            $chunks = $rows->sortBy('nombres')->values()->chunk($rowsPerPage);
+
+            foreach ($chunks as $chunk) {
+                $pages[] = [
+                    'type' => 'detail',
+                    'local_id' => null,
+                    'local_nombre' => $localNombre,
+                    'cargo_id' => null,
+                    'cargo_nombre' => null,
+                    'monto_cargo' => 0,
+                    'planilla_numero' => (int) $pla->pla_iNumero,
+                    'page_no' => $pageNo++,
+                    'rows' => $chunk->map(function ($r) use (&$ordenLocal) {
+                        return [
+                            'orden' => $ordenLocal++,
+                            'codigo' => $r->codigo,
+                            'dni' => $r->dni,
+                            'nombres' => $r->nombres,
+                            'local_nombre' => $r->local_nombre,
+                            'cargo_nombre' => $r->cargo_nombre,
+                            'monto' => (float) $r->monto,
+                            'cred_numero' => $r->cred_numero,
+                        ];
+                    })->toArray(),
+                ];
+            }
+        } elseif ($isAdministrativo) {
             // NUEVA LÓGICA: páginas por local (lista global), permitiendo múltiples cargos en la misma página.
             // Se usa numeración global continua.
             $ordenGlobal = 1;
@@ -116,8 +147,8 @@ class PlanillaPrintController extends Controller
                 ];
             }
             // Marcar la última página de detalle para insertar línea de "Monto por local"
-            if (!empty($pages)) {
-                $totalLocal = $rows->sum(fn($r)=> (float)$r->monto);
+            if (! empty($pages)) {
+                $totalLocal = $rows->sum(fn ($r) => (float) $r->monto);
                 $pages[array_key_last($pages)]['is_last_detail'] = true;
                 $pages[array_key_last($pages)]['total_local'] = $totalLocal;
             }
@@ -155,7 +186,7 @@ class PlanillaPrintController extends Controller
         }
 
         // Append summary page para docentes y administrativos estándar (no tercero/cas ni alumnos)
-        if (!$isTerceroCas && !$isAlumno) {
+        if (! $isTerceroCas && ! $isAlumno) {
             $resumen = [];
             $granTotal = 0.0;
             foreach ($groups as $cargoNombre => $items) {
@@ -190,6 +221,7 @@ class PlanillaPrintController extends Controller
         $tituloPlanilla = $tipo?->tipo_vcNombrePlanilla ?? 'PLANILLA';
 
         // Flags already computed above
+        $isDocente = str_contains($tipoNombreLower, 'docente');
 
         $data = [
             'numero_planilla' => (int) $pla->pla_iNumero,
@@ -199,6 +231,7 @@ class PlanillaPrintController extends Controller
             'titulo_planilla' => $tituloPlanilla,
             'pages' => $pages,
             'total_pages' => count($pages),
+            'es_docente' => $isDocente,
             'es_tercero_cas' => $isTerceroCas,
             'es_alumno' => $isAlumno,
             'es_admin' => $isAdministrativo,
@@ -206,16 +239,39 @@ class PlanillaPrintController extends Controller
             'profec_vcFimaJefe' => $fecha?->profec_vcFimaJefe,
         ];
 
-        // Para reimpresión, forzar uso de Blade compilado y fondos si existen
-        $detailBgUrl = $this->findTemplateImageUrl('docentes');
-        $summaryBgUrl = $this->findTemplateImageUrl('docentes_resumen') ?? null;
-        $data['bg_detail_url'] = $detailBgUrl;
-        $data['bg_summary_url'] = $summaryBgUrl;
-        $pdf = \PDF::loadView('pdf.planilla_docentes_compilado', $data)->setPaper('a4', 'landscape');
-    $content = $pdf->output();
+        $tplDirA = public_path('storage/templates_planilla');
+        $tplDirB = public_path('storage/templates_planillas');
+        $tplDetalle = $this->findTemplatePdf('docentes', [$tplDirA, $tplDirB]);
+        $tplResumen = $this->findTemplatePdf('resumen_doc', [$tplDirA, $tplDirB]);
+
+        // Igualar comportamiento de impresión original: FPDI para docentes/administrativos estándar; Blade para terceros/cas/alumnos.
+        if (($isDocente || $isAdministrativo) && ! $isTerceroCas && ! $isAlumno && ($tplDetalle || $tplResumen)) {
+            $header = [
+                'numero_planilla' => null,
+                'proceso_nombre' => $proceso?->pro_vcNombre,
+                'fecha_proceso' => optional($fecha)->profec_dFecha,
+                'impresion_fecha' => now()->toDateTimeString(),
+                'titulo_planilla' => $tituloPlanilla,
+                'profec_vcFimaDirector' => $fecha?->profec_vcFimaDirector,
+                'profec_vcFimaJefe' => $fecha?->profec_vcFimaJefe,
+            ];
+
+            $generator = new PlanillaPdfGenerator;
+            $content = $generator->buildDocentesPdf($pages, $header, $tplDetalle, $tplResumen);
+        } else {
+            $detailBgUrl = $this->findTemplateImageUrl('docentes');
+            $summaryBgUrl = $this->findTemplateImageUrl('resumen_doc');
+            $data['bg_detail_url'] = $detailBgUrl;
+            $data['bg_summary_url'] = $summaryBgUrl;
+            $pdf = \PDF::loadView('pdf.planilla_docentes_compilado', $data)->setPaper('a4', 'landscape');
+            $content = $pdf->output();
+        }
+
         $downloadName = 'reimpresion_planilla_'.$pla->pla_iNumero.'_'.now()->format('Ymd_His').'.pdf';
 
-        return response()->streamDownload(function () use ($content) { echo $content; }, $downloadName, [
+        return response()->streamDownload(function () use ($content) {
+            echo $content;
+        }, $downloadName, [
             'Content-Type' => 'application/pdf',
             'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
             'Pragma' => 'no-cache',
@@ -229,18 +285,38 @@ class PlanillaPrintController extends Controller
             public_path('storage/templates_planilla'),
             public_path('storage/templates_planillas'),
         ];
-        $exts = ['png','jpg','jpeg'];
+        $exts = ['png', 'jpg', 'jpeg'];
         foreach ($dirs as $dir) {
             foreach ($exts as $ext) {
                 $path = rtrim($dir, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.$baseName.'.'.$ext;
                 if (is_file($path)) {
                     $rel = str_replace(public_path(), '', $path);
+
                     return asset(ltrim($rel, '/\\'));
                 }
             }
         }
+
         return null;
     }
 
-    // No se requiere buscar templates PDF en reimpresión (se usa la vista Blade)
+    private function findTemplatePdf(string $baseName, array $dirs): ?string
+    {
+        foreach ($dirs as $dir) {
+            if (! is_dir($dir)) {
+                continue;
+            }
+
+            $pattern = rtrim($dir, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.$baseName.'*.pdf';
+            $matches = glob($pattern);
+
+            if (! empty($matches)) {
+                sort($matches);
+
+                return $matches[0];
+            }
+        }
+
+        return null;
+    }
 }

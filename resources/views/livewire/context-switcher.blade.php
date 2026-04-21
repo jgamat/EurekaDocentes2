@@ -1,6 +1,6 @@
-<div x-data="{ procesoId: @entangle('proceso_id'), fechaId: @entangle('proceso_fecha_id') }" class="flex items-center gap-2">
-    <div>
-    <select wire:model="proceso_id" wire:change="changeProceso($event.target.value)" class="fi-input rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-800 text-sm">
+<div x-data="{ procesoId: @entangle('proceso_id'), fechaId: @entangle('proceso_fecha_id') }" class="ctx-switcher">
+    <div class="ctx-field">
+    <select wire:model="proceso_id" wire:change="changeProceso($event.target.value)" class="ctx-select">
             @if(empty($procesoOptions))
                 <option value="">— Sin procesos abiertos —</option>
             @else
@@ -11,8 +11,8 @@
             @endforeach
         </select>
     </div>
-    <div>
-    <select wire:key="fecha-{{ $fechaSelectVersion }}" wire:model="proceso_fecha_id" wire:change="changeFecha($event.target.value)" class="fi-input rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-800 text-sm" @if(empty($fechaOptions)) disabled @endif>
+    <div class="ctx-field">
+    <select wire:key="fecha-{{ $fechaSelectVersion }}" wire:model="proceso_fecha_id" wire:change="changeFecha($event.target.value)" class="ctx-select" @if(empty($fechaOptions)) disabled @endif>
             @if(empty($fechaOptions))
                 <option value="">— Sin fechas activas —</option>
             @else
@@ -25,9 +25,9 @@
     </div>
     <button
         x-bind:disabled="!procesoId || !fechaId"
-        x-bind:class="(!procesoId || !fechaId) ? 'opacity-50 cursor-not-allowed' : ''"
+        x-bind:class="(!procesoId || !fechaId) ? 'ctx-apply-disabled' : ''"
         wire:click.prevent="apply"
         type="button"
-        class="px-3 py-1.5 rounded-md bg-primary-600 text-white text-sm hover:bg-primary-700 transition-colors"
+        class="ctx-apply"
     >Aplicar</button>
 </div>

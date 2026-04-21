@@ -10,7 +10,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class ProcesoFecha extends Model
 {
     protected $table = 'procesofecha';
+
     protected $primaryKey = 'profec_iCodigo';
+
     public $incrementing = true;
 
     protected $fillable = [
@@ -30,14 +32,14 @@ class ProcesoFecha extends Model
         return $this->belongsTo(Proceso::class, 'pro_iCodigo', 'pro_iCodigo');
     }
 
-     public function localesMaestro(): BelongsToMany
+    public function localesMaestro(): BelongsToMany
     {
         return $this->belongsToMany(
             LocalesMaestro::class,
-            'locales', 
-            'profec_iCodigo',   
-            'locma_iCodigo', 
-        );
+            'locales',
+            'profec_iCodigo',
+            'locma_iCodigo',
+        )->withTimestamps();
     }
 
     public function experiencias(): HasMany
@@ -45,54 +47,84 @@ class ProcesoFecha extends Model
         return $this->hasMany(ExperienciaAdmision::class, 'profec_iCodigo');
     }
 
-     protected $casts = [
-        'profec_iActivo' => 'boolean', 
-        
+    protected $casts = [
+        'profec_iActivo' => 'boolean',
+
     ];
 
     // Accessors to normalize stored values on read (used by Filament FileUpload state)
     public function getProfecVcUrlAnversoAttribute($value)
     {
-        if (!is_string($value) || $value === '') return $value;
+        if (! is_string($value) || $value === '') {
+            return $value;
+        }
         $path = ltrim($value, '/');
         if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
             $parts = @parse_url($path);
             $path = is_array($parts) && isset($parts['path']) ? ltrim($parts['path'], '/') : $path;
         }
-        if (str_starts_with($path, 'public/')) $path = substr($path, 7);
-        if (str_starts_with($path, 'storage/')) $path = substr($path, 8);
+        if (str_starts_with($path, 'public/')) {
+            $path = substr($path, 7);
+        }
+        if (str_starts_with($path, 'storage/')) {
+            $path = substr($path, 8);
+        }
+
         return $path;
     }
 
     public function getProfecVcUrlReversoAttribute($value)
     {
-        if (!is_string($value) || $value === '') return $value;
+        if (! is_string($value) || $value === '') {
+            return $value;
+        }
         $path = ltrim($value, '/');
         if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
             $parts = @parse_url($path);
             $path = is_array($parts) && isset($parts['path']) ? ltrim($parts['path'], '/') : $path;
         }
-        if (str_starts_with($path, 'public/')) $path = substr($path, 7);
-        if (str_starts_with($path, 'storage/')) $path = substr($path, 8);
+        if (str_starts_with($path, 'public/')) {
+            $path = substr($path, 7);
+        }
+        if (str_starts_with($path, 'storage/')) {
+            $path = substr($path, 8);
+        }
+
         return $path;
     }
 
     // Normalize setters to store relative public-disk paths
     public function setProfecVcUrlAnversoAttribute($value): void
     {
-        if (!is_string($value) || $value === '') { $this->attributes['profec_vcUrlAnverso'] = $value; return; }
+        if (! is_string($value) || $value === '') {
+            $this->attributes['profec_vcUrlAnverso'] = $value;
+
+            return;
+        }
         $path = ltrim($value, '/');
-        if (str_starts_with($path, 'public/')) $path = substr($path, 7);
-        if (str_starts_with($path, 'storage/')) $path = substr($path, 8);
+        if (str_starts_with($path, 'public/')) {
+            $path = substr($path, 7);
+        }
+        if (str_starts_with($path, 'storage/')) {
+            $path = substr($path, 8);
+        }
         $this->attributes['profec_vcUrlAnverso'] = $path;
     }
 
     public function setProfecVcUrlReversoAttribute($value): void
     {
-        if (!is_string($value) || $value === '') { $this->attributes['profec_vcUrlReverso'] = $value; return; }
+        if (! is_string($value) || $value === '') {
+            $this->attributes['profec_vcUrlReverso'] = $value;
+
+            return;
+        }
         $path = ltrim($value, '/');
-        if (str_starts_with($path, 'public/')) $path = substr($path, 7);
-        if (str_starts_with($path, 'storage/')) $path = substr($path, 8);
+        if (str_starts_with($path, 'public/')) {
+            $path = substr($path, 7);
+        }
+        if (str_starts_with($path, 'storage/')) {
+            $path = substr($path, 8);
+        }
         $this->attributes['profec_vcUrlReverso'] = $path;
     }
 
@@ -100,14 +132,20 @@ class ProcesoFecha extends Model
     public function getProfecVcUrlAnversoUrlAttribute(): ?string
     {
         $path = $this->attributes['profec_vcUrlAnverso'] ?? null;
-        if (!$path) return null;
-        return asset('storage/' . ltrim($path, '/'));
+        if (! $path) {
+            return null;
+        }
+
+        return asset('storage/'.ltrim($path, '/'));
     }
 
     public function getProfecVcUrlReversoUrlAttribute(): ?string
     {
         $path = $this->attributes['profec_vcUrlReverso'] ?? null;
-        if (!$path) return null;
-        return asset('storage/' . ltrim($path, '/'));
+        if (! $path) {
+            return null;
+        }
+
+        return asset('storage/'.ltrim($path, '/'));
     }
 }

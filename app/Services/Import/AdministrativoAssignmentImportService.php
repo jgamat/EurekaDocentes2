@@ -3,27 +3,28 @@
 namespace App\Services\Import;
 
 use App\DTO\Import\AdministrativoAssignmentRow;
-use Illuminate\Support\Collection;
-use Carbon\Carbon;
-
+use App\Models\Administrativo;
+use App\Models\ExperienciaAdmision;
 // Reutilizamos muchos de los mismos modelos usados para docentes suponiendo que
 // la estructura de cargos/locales y procesoFecha aplica también a administrativos.
-use App\Models\ProcesoFecha;
-use App\Models\ExperienciaAdmision;
 use App\Models\ExperienciaAdmisionMaestro;
-use App\Models\LocalesMaestro;
+use App\Models\ImportJobLog;
+use App\Models\LocalCargo;
 use App\Models\Locales;
-use App\Models\LocalCargo; // Si la relación cargo-local es compartida
-use Illuminate\Support\Facades\DB;
-
+use App\Models\LocalesMaestro;
+use App\Models\ProcesoAdministrativo; // Si la relación cargo-local es compartida
+use App\Models\ProcesoFecha;
 // Modelos específicos administrativos (ajustar según existencia real)
-use App\Models\Administrativo;
-use App\Models\ProcesoAdministrativo; // Suponiendo tabla similar a ProcesoDocente
 use App\Services\Import\Concerns\SharedAssignmentImport;
+use Carbon\Carbon; // Suponiendo tabla similar a ProcesoDocente
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class AdministrativoAssignmentImportService
 {
     use SharedAssignmentImport;
+
     /** @var array<string,bool> */
     protected array $seenKeys = [];
 
@@ -31,52 +32,65 @@ class AdministrativoAssignmentImportService
     {
         $results = collect();
 
-    // Nota: La tabla 'administrativo' sólo expone 'adm_vcNombres' (nombre completo) según reporte.
-    // Anteriormente se intentaba seleccionar columnas separadas (adm_vcNombre, adm_vcPaterno, adm_vcMaterno) que NO existen.
-    // Adaptamos la lógica para trabajar únicamente con el nombre completo.
-    $catalogoAdministrativos = Administrativo::query()->select('adm_vcCodigo','adm_vcDni','adm_vcNombres')->get();
-        $porCodigo = $catalogoAdministrativos->keyBy(fn($a)=> strtoupper($a->adm_vcCodigo));
-        $porDni = $catalogoAdministrativos->keyBy(fn($a)=> $a->adm_vcDni);
+        // Nota: La tabla 'administrativo' sólo expone 'adm_vcNombres' (nombre completo) según reporte.
+        // Anteriormente se intentaba seleccionar columnas separadas (adm_vcNombre, adm_vcPaterno, adm_vcMaterno) que NO existen.
+        // Adaptamos la lógica para trabajar únicamente con el nombre completo.
+        $catalogoAdministrativos = Administrativo::query()->select('adm_vcCodigo', 'adm_vcDni', 'adm_vcNombres')->get();
+        $porCodigo = $catalogoAdministrativos->keyBy(fn ($a) => strtoupper($a->adm_vcCodigo));
+        $porDni = $catalogoAdministrativos->keyBy(fn ($a) => $a->adm_vcDni);
 
-        $catalogoFechas = ProcesoFecha::query()->select('profec_iCodigo','profec_dFecha','profec_iActivo')->get();
-        $fechasPorDate = $catalogoFechas->keyBy(fn($f)=> Carbon::parse($f->profec_dFecha)->format('Y-m-d'));
+        $catalogoFechas = ProcesoFecha::query()->select('profec_iCodigo', 'profec_dFecha', 'profec_iActivo')->get();
+        $fechasPorDate = $catalogoFechas->keyBy(fn ($f) => Carbon::parse($f->profec_dFecha)->format('Y-m-d'));
 
         $catalogoCargosInst = ExperienciaAdmision::query()
-            ->select('expadm_iCodigo','expadmma_iCodigo','profec_iCodigo')
+            ->select('expadm_iCodigo', 'expadmma_iCodigo', 'profec_iCodigo', 'expadm_fMonto')
             ->with(['maestro:expadmma_iCodigo,expadmma_vcNombre'])
             ->get();
-        $catalogoCargosMaestro = ExperienciaAdmisionMaestro::query()->select('expadmma_iCodigo','expadmma_vcNombre')->get();
+        $catalogoCargosMaestro = ExperienciaAdmisionMaestro::query()->select('expadmma_iCodigo', 'expadmma_vcNombre')->get();
 
-        $normKey = function(string $s): string {
+        $normKey = function (string $s): string {
             $s = mb_strtoupper($s);
-            $s = strtr($s, ['Á'=>'A','É'=>'E','Í'=>'I','Ó'=>'O','Ú'=>'U','Ü'=>'U']);
-            $s = preg_replace('/\s+/',' ',trim($s));
+            $s = strtr($s, ['Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U', 'Ü' => 'U']);
+            $s = preg_replace('/\s+/', ' ', trim($s));
+
             return $s;
         };
 
         $maestroPorNombre = $catalogoCargosMaestro
-            ->mapWithKeys(fn($m)=> [ $normKey($m->expadmma_vcNombre) => $m ]);
+            ->mapWithKeys(fn ($m) => [$normKey($m->expadmma_vcNombre) => $m]);
 
-        $catalogoLocalesMaestro = LocalesMaestro::query()->select('locma_iCodigo','locma_vcNombre')->get();
-        $normLocal = fn(string $s)=> preg_replace('/\s+/',' ',trim(mb_strtoupper(strtr($s,['Á'=>'A','É'=>'E','Í'=>'I','Ó'=>'O','Ú'=>'U','Ü'=>'U']))));
-        $localMaestroMatch = $catalogoLocalesMaestro->mapWithKeys(fn($l)=> [ $normLocal($l->locma_vcNombre) => $l ]);
+        $catalogoLocalesMaestro = LocalesMaestro::query()->select('locma_iCodigo', 'locma_vcNombre')->get();
+        $normLocal = fn (string $s) => preg_replace('/\s+/', ' ', trim(mb_strtoupper(strtr($s, ['Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U', 'Ü' => 'U']))));
+        $localMaestroMatch = $catalogoLocalesMaestro->mapWithKeys(fn ($l) => [$normLocal($l->locma_vcNombre) => $l]);
 
-        $instanciasLocales = Locales::query()->select('loc_iCodigo','locma_iCodigo','profec_iCodigo')->get();
-        $instanciaIndex = $instanciasLocales->mapWithKeys(fn($r)=> [ $r->locma_iCodigo.'|'.$r->profec_iCodigo => $r->loc_iCodigo ]);
+        $instanciasLocales = Locales::query()->select('loc_iCodigo', 'locma_iCodigo', 'profec_iCodigo')->get();
+        $instanciaIndex = $instanciasLocales->mapWithKeys(fn ($r) => [$r->locma_iCodigo.'|'.$r->profec_iCodigo => $r->loc_iCodigo]);
 
         // Índice instancias cargo
         $instanciaCargoIndex = $catalogoCargosInst->mapWithKeys(
-            fn($ci)=> [ ($ci->expadmma_iCodigo.'|'.$ci->profec_iCodigo) => $ci->expadm_iCodigo ]
+            fn ($ci) => [($ci->expadmma_iCodigo.'|'.$ci->profec_iCodigo) => $ci->expadm_iCodigo]
+        );
+        $instanciaCargoMetaIndex = $catalogoCargosInst->mapWithKeys(
+            fn ($ci) => [($ci->expadmma_iCodigo.'|'.$ci->profec_iCodigo) => $ci]
         );
 
         foreach ($rawRows as $idx => $row) {
-            if (is_array($row)) { $row = $this->canonicalizeRow($row); }
+            if (is_array($row)) {
+                $row = $this->canonicalizeRow($row);
+            }
             $dto = new AdministrativoAssignmentRow(rowNumber: $idx + 2);
             $dto->codigo = $this->norm($row['codigo'] ?? null); // opcional
             $dto->dni = $this->norm($row['dni'] ?? null); // obligatorio
             // Formato oficial sólo provee 'nombres'; si llegan apellidos separados se combinan.
-            if (!empty($row['paterno']) || !empty($row['materno'])) {
-                $parts=[]; if(!empty($row['paterno'])) $parts[] = trim($row['paterno']); if(!empty($row['materno'])) $parts[] = trim($row['materno']); if(!empty($row['nombres'])) $parts[] = trim($row['nombres']);
+            if (! empty($row['paterno']) || ! empty($row['materno'])) {
+                $parts = [];
+                if (! empty($row['paterno'])) {
+                    $parts[] = trim($row['paterno']);
+                } if (! empty($row['materno'])) {
+                    $parts[] = trim($row['materno']);
+                } if (! empty($row['nombres'])) {
+                    $parts[] = trim($row['nombres']);
+                }
                 $dto->nombres = trim(implode(' ', $parts));
             } else {
                 $dto->nombres = trim($row['nombres'] ?? '');
@@ -84,39 +98,58 @@ class AdministrativoAssignmentImportService
             $dto->cargoNombre = $this->norm($row['cargo'] ?? null);
             $dto->localNombre = $this->norm($row['local'] ?? null);
             $dto->fechaOriginal = $row['fecha'] ?? null;
+            $dto->monto = $this->parseMonto($row['monto'] ?? null);
+
+            if (($row['monto'] ?? null) !== null && trim((string) $row['monto']) !== '' && $dto->monto === null) {
+                $dto->errors[] = 'Monto inválido';
+            }
+            if ($dto->monto === null) {
+                $dto->montoEstado = 'Sin monto';
+            }
 
             $dto->fechaISO = $this->parseFecha($dto->fechaOriginal);
-            if (!$dto->fechaISO) { $dto->errors[] = 'Fecha inválida'; }
+            if (! $dto->fechaISO) {
+                $dto->errors[] = 'Fecha inválida';
+            }
             if ($dto->fechaISO) {
                 $pf = $fechasPorDate[$dto->fechaISO] ?? null;
-                if (!$pf) { $dto->errors[] = 'Fecha no corresponde a ProcesoFecha'; }
-                else {
-                    if (property_exists($pf,'profec_iActivo') && (int)$pf->profec_iActivo !== 1) {
+                if (! $pf) {
+                    $dto->errors[] = 'Fecha no corresponde a ProcesoFecha';
+                } else {
+                    if (property_exists($pf, 'profec_iActivo') && (int) $pf->profec_iActivo !== 1) {
                         $dto->errors[] = 'ProcesoFecha no activo';
                     }
                     $dto->procesoFechaId = $pf->profec_iCodigo;
                 }
             }
-            if ($dto->fechaISO && !$dto->procesoFechaId && !in_array('Fecha no corresponde a ProcesoFecha', $dto->errors, true)) {
+            if ($dto->fechaISO && ! $dto->procesoFechaId && ! in_array('Fecha no corresponde a ProcesoFecha', $dto->errors, true)) {
                 $dto->errors[] = 'Fecha no corresponde a ProcesoFecha';
             }
 
             if ($dto->dni) {
-                $len = strlen($dto->dni); $min = config('import.dni_min_length',8); $max = config('import.dni_max_length',9);
-                if (!ctype_digit($dto->dni) || $len < $min || $len > $max) { $dto->errors[] = 'DNI inválido'; }
+                $len = strlen($dto->dni);
+                $min = config('import.dni_min_length', 8);
+                $max = config('import.dni_max_length', 9);
+                if (! ctype_digit($dto->dni) || $len < $min || $len > $max) {
+                    $dto->errors[] = 'DNI inválido';
+                }
             }
 
             // DNI es obligatorio para identificar el administrativo.
             $adm = null;
-            if ($dto->dni && isset($porDni[$dto->dni])) { $adm = $porDni[$dto->dni]; }
-            elseif ($dto->codigo && isset($porCodigo[$dto->codigo])) { $adm = $porCodigo[$dto->codigo]; }
+            if ($dto->dni && isset($porDni[$dto->dni])) {
+                $adm = $porDni[$dto->dni];
+            } elseif ($dto->codigo && isset($porCodigo[$dto->codigo])) {
+                $adm = $porCodigo[$dto->codigo];
+            }
 
-            if (!$dto->dni) {
+            if (! $dto->dni) {
                 $dto->errors[] = 'DNI obligatorio';
             }
 
-            if (!$adm && $dto->dni) { $dto->errors[] = 'Administrativo no encontrado'; }
-            elseif ($adm) {
+            if (! $adm && $dto->dni) {
+                $dto->errors[] = 'Administrativo no encontrado';
+            } elseif ($adm) {
                 $dto->administrativoPk = $adm->adm_vcCodigo ?? $adm->adm_vcDni; // fallback
                 $nombreCompleto = trim($adm->adm_vcNombres);
                 $nombreCompletoUp = mb_strtoupper($nombreCompleto);
@@ -131,35 +164,69 @@ class AdministrativoAssignmentImportService
             if ($dto->cargoNombre) {
                 $cargoKey = $normKey($dto->cargoNombre);
                 $maestroCargo = $maestroPorNombre[$cargoKey] ?? null;
-                if (!$maestroCargo) { $dto->errors[] = 'Cargo no existe en ExperienciaAdmisionMaestro'; }
-                else {
+                if (! $maestroCargo) {
+                    $dto->errors[] = 'Cargo no existe en ExperienciaAdmisionMaestro';
+                } else {
                     if ($dto->procesoFechaId) {
                         $idxKey = $maestroCargo->expadmma_iCodigo.'|'.$dto->procesoFechaId;
-                        if (isset($instanciaCargoIndex[$idxKey])) { $dto->cargoId = $instanciaCargoIndex[$idxKey]; }
-                        else { $dto->warnings[] = 'Instancia cargo para fecha será creada'; }
-                    } else { $dto->warnings[] = 'Cargo pendiente de fecha'; }
+                        if (isset($instanciaCargoIndex[$idxKey])) {
+                            $dto->cargoId = $instanciaCargoIndex[$idxKey];
+                            if ($dto->monto !== null) {
+                                $cargoInstancia = $instanciaCargoMetaIndex[$idxKey] ?? null;
+                                $montoActual = $cargoInstancia?->expadm_fMonto;
+                                if ($montoActual === null || (float) $montoActual === 0.0) {
+                                    $dto->montoEstado = 'Se aplicará';
+                                    $dto->warnings[] = 'Monto se aplicará porque el cargo está en 0 o null';
+                                } else {
+                                    $dto->montoEstado = 'No se aplicará';
+                                    $dto->warnings[] = 'Monto no se aplicará porque el cargo ya tiene monto';
+                                }
+                            }
+                        } else {
+                            $dto->warnings[] = 'Instancia cargo para fecha será creada';
+                            if ($dto->monto !== null) {
+                                $dto->montoEstado = 'Se aplicará al crear';
+                                $dto->warnings[] = 'Monto se aplicará al crear la instancia del cargo';
+                            }
+                        }
+                    } else {
+                        $dto->warnings[] = 'Cargo pendiente de fecha';
+                    }
                 }
-            } else { $dto->errors[] = 'Cargo vacío'; }
+            } else {
+                $dto->errors[] = 'Cargo vacío';
+            }
 
             if ($dto->localNombre) {
                 $locKey = $normLocal($dto->localNombre);
                 $localMaestro = $localMaestroMatch[$locKey] ?? null;
-                if (!$localMaestro) { $dto->errors[] = 'Local no existe en LocalesMaestro'; }
-                else {
+                if (! $localMaestro) {
+                    $dto->errors[] = 'Local no existe en LocalesMaestro';
+                } else {
                     $dto->localMaestroId = $localMaestro->locma_iCodigo;
                     if ($dto->procesoFechaId) {
                         $idxL = $localMaestro->locma_iCodigo.'|'.$dto->procesoFechaId;
-                        if (isset($instanciaIndex[$idxL])) { $dto->localId = $instanciaIndex[$idxL]; }
-                        else { $dto->warnings[] = 'Instancia local para fecha será creada'; /* localId queda null */ }
-                    } else { $dto->warnings[] = 'Local pendiente de fecha'; }
+                        if (isset($instanciaIndex[$idxL])) {
+                            $dto->localId = $instanciaIndex[$idxL];
+                        } else {
+                            $dto->warnings[] = 'Instancia local para fecha será creada'; /* localId queda null */
+                        }
+                    } else {
+                        $dto->warnings[] = 'Local pendiente de fecha';
+                    }
                 }
-            } else { $dto->errors[] = 'Local vacío'; }
+            } else {
+                $dto->errors[] = 'Local vacío';
+            }
 
             // Duplicados en el archivo se controlan por DNI+fecha (código es opcional)
             if ($dto->dni && $dto->fechaISO) {
                 $key = $dto->dni.'|'.$dto->fechaISO;
-                if (isset($this->seenKeys[$key])) { $dto->errors[] = 'Duplicado en archivo'; }
-                else { $this->seenKeys[$key] = true; }
+                if (isset($this->seenKeys[$key])) {
+                    $dto->errors[] = 'Duplicado en archivo';
+                } else {
+                    $this->seenKeys[$key] = true;
+                }
             }
 
             // Verificación de asignación previa por DNI
@@ -168,20 +235,25 @@ class AdministrativoAssignmentImportService
                     ->where('adm_vcDni', $dto->dni)
                     ->where('proadm_iAsignacion', 1)
                     ->exists();
-                if ($exists) { $dto->errors[] = 'Ya asignado en fecha'; }
-                else {
+                if ($exists) {
+                    $dto->errors[] = 'Ya asignado en fecha';
+                } else {
                     // Detectar si hay un registro pendiente para informar que se reactivará
                     $pendingExists = ProcesoAdministrativo::where('profec_iCodigo', $dto->procesoFechaId)
                         ->where('adm_vcDni', $dto->dni)
                         ->where('proadm_iAsignacion', 0)
                         ->exists();
-                    if ($pendingExists) { $dto->warnings[] = 'Reactivará asignación previa'; }
+                    if ($pendingExists) {
+                        $dto->warnings[] = 'Reactivará asignación previa';
+                    }
                 }
             }
 
             $dto->valid = empty($dto->errors);
             $results->push($dto);
-            if ($stopOnFirstError && !$dto->valid) { break; }
+            if ($stopOnFirstError && ! $dto->valid) {
+                break;
+            }
         }
 
         return $results;
@@ -189,19 +261,39 @@ class AdministrativoAssignmentImportService
 
     public function import(Collection $rows, bool $allowPartial = true, ?string $originalFilename = null): array
     {
-        $imported = 0; $skipped = 0; $errors = []; $localCargoAdjust = [];
+        $imported = 0;
+        $skipped = 0;
+        $errors = [];
+        $localCargoAdjust = [];
         DB::transaction(function () use ($rows, $allowPartial, &$imported, &$skipped, &$errors, &$localCargoAdjust) {
             foreach ($rows as $dto) {
-                if (!$dto instanceof AdministrativoAssignmentRow) continue;
-                if (!$dto->valid) { $skipped++; if(!$allowPartial){ $errors[]='Fila '.$dto->rowNumber.' inválida'; } continue; }
-                if (!$dto->procesoFechaId) { $skipped++; continue; }
+                if (! $dto instanceof AdministrativoAssignmentRow) {
+                    continue;
+                }
+                if (! $dto->valid) {
+                    $skipped++;
+                    if (! $allowPartial) {
+                        $errors[] = 'Fila '.$dto->rowNumber.' inválida';
+                    }
+
+                    continue;
+                }
+                if (! $dto->procesoFechaId) {
+                    $skipped++;
+
+                    continue;
+                }
 
                 // Si ya existe activo, saltar (ya controlado en parse, doble control defensivo)
                 $dup = ProcesoAdministrativo::where('profec_iCodigo', $dto->procesoFechaId)
                     ->where('adm_vcDni', $dto->dni)
                     ->where('proadm_iAsignacion', 1)
                     ->first();
-                if ($dup) { $skipped++; continue; }
+                if ($dup) {
+                    $skipped++;
+
+                    continue;
+                }
 
                 // Reutilizar registro pendiente (proadm_iAsignacion = 0) si existe para evitar violar PK compuesta (dni+fecha)
                 $pendiente = ProcesoAdministrativo::where('profec_iCodigo', $dto->procesoFechaId)
@@ -211,7 +303,7 @@ class AdministrativoAssignmentImportService
                     ->first();
 
                 if ($dto->localNombre) {
-                    if (!$dto->localId) {
+                    if (! $dto->localId) {
                         // Crear/obtener maestro y luego instancia
                         $maestro = $dto->localMaestroId
                             ? LocalesMaestro::firstOrCreate(['locma_iCodigo' => $dto->localMaestroId], ['locma_vcNombre' => $dto->localNombre])
@@ -222,7 +314,7 @@ class AdministrativoAssignmentImportService
                         ]);
                         $dto->localId = $inst->loc_iCodigo;
                     } else {
-                        if (!Locales::where('loc_iCodigo', $dto->localId)->exists()) {
+                        if (! Locales::where('loc_iCodigo', $dto->localId)->exists()) {
                             // Era un ID maestro erróneo legado; corregir
                             $maestroId = $dto->localMaestroId ?? $dto->localId;
                             $inst = Locales::firstOrCreate([
@@ -234,13 +326,27 @@ class AdministrativoAssignmentImportService
                     }
                 }
 
-                if ($dto->procesoFechaId && !$dto->cargoId && $dto->cargoNombre) {
+                if ($dto->procesoFechaId && ! $dto->cargoId && $dto->cargoNombre) {
                     $maestro = ExperienciaAdmisionMaestro::firstOrCreate(['expadmma_vcNombre' => $dto->cargoNombre]);
                     $instancia = ExperienciaAdmision::firstOrCreate([
                         'expadmma_iCodigo' => $maestro->expadmma_iCodigo,
                         'profec_iCodigo' => $dto->procesoFechaId,
-                    ], [ 'expadm_fMonto' => 0 ]);
+                    ], ['expadm_fMonto' => 0]);
                     $dto->cargoId = $instancia->expadm_iCodigo;
+                }
+
+                if ($dto->cargoId && $dto->monto !== null) {
+                    $cargoInstancia = ExperienciaAdmision::where('expadm_iCodigo', $dto->cargoId)
+                        ->lockForUpdate()
+                        ->first();
+
+                    if ($cargoInstancia) {
+                        $montoActual = $cargoInstancia->expadm_fMonto;
+                        if ($montoActual === null || (float) $montoActual === 0.0) {
+                            $cargoInstancia->expadm_fMonto = $dto->monto;
+                            $cargoInstancia->save();
+                        }
+                    }
                 }
 
                 if ($dto->localId && $dto->cargoId) {
@@ -249,22 +355,23 @@ class AdministrativoAssignmentImportService
                         ->where('expadm_iCodigo', $dto->cargoId)
                         ->lockForUpdate()
                         ->first();
-                    if (!$localCargo) {
+                    if (! $localCargo) {
                         $localCargo = LocalCargo::create([
                             'loc_iCodigo' => $dto->localId,
                             'expadm_iCodigo' => $dto->cargoId,
                             'loccar_iVacante' => 0,
                             'loccar_iOcupado' => 0,
                         ]);
-                        $localCargoAdjust[$keyLC] = ['increment'=>1,'model'=>$localCargo,'new'=>true];
+                        $localCargoAdjust[$keyLC] = ['increment' => 1, 'model' => $localCargo, 'new' => true];
                     } else {
-                        if (!isset($localCargoAdjust[$keyLC])) $localCargoAdjust[$keyLC] = ['increment'=>0,'model'=>$localCargo,'new'=>false];
+                        if (! isset($localCargoAdjust[$keyLC])) {
+                            $localCargoAdjust[$keyLC] = ['increment' => 0, 'model' => $localCargo, 'new' => false];
+                        }
                         $localCargoAdjust[$keyLC]['increment']++;
                     }
                 }
 
                 $ip = request()->header('X-Forwarded-For') ? explode(',', request()->header('X-Forwarded-For'))[0] : request()->ip();
-
 
                 if ($pendiente) {
                     // Actualizar el registro existente para reactivarlo
@@ -273,8 +380,8 @@ class AdministrativoAssignmentImportService
                         'loc_iCodigo' => $dto->localId,
                         'proadm_iAsignacion' => 1,
                         'proadm_dtFechaAsignacion' => now(),
-                        'user_id' => auth()->id(),
-                        'proadm_vcIpAsignacion'=> $ip,
+                        'user_id' => Auth::id(),
+                        'proadm_vcIpAsignacion' => $ip,
                     ]);
                     $imported++;
                     // Contabilizar incremento de ocupados igual que una nueva asignación
@@ -286,8 +393,8 @@ class AdministrativoAssignmentImportService
                         'loc_iCodigo' => $dto->localId,
                         'proadm_iAsignacion' => 1,
                         'proadm_dtFechaAsignacion' => now(),
-                        'user_id' => auth()->id(),
-                        'proadm_vcIpAsignacion'=> $ip,
+                        'user_id' => Auth::id(),
+                        'proadm_vcIpAsignacion' => $ip,
                     ]);
                     $imported++;
                 }
@@ -296,7 +403,7 @@ class AdministrativoAssignmentImportService
             // Nuevo flujo: primero establecer/actualizar Ocupado, luego equilibrar Vacante si queda por debajo.
             foreach ($localCargoAdjust as $info) {
                 $lc = $info['model'];
-                $increment = (int)($info['increment'] ?? 0);
+                $increment = (int) ($info['increment'] ?? 0);
                 if ($info['new']) {
                     // Recurso recién creado: ambos iguales al total asignado detectado
                     $lc->loccar_iOcupado = $increment;
@@ -319,9 +426,9 @@ class AdministrativoAssignmentImportService
             }
         });
 
-        if (class_exists(\App\Models\ImportJobLog::class)) {
-            \App\Models\ImportJobLog::create([
-                'user_id' => auth()->id(),
+        if (class_exists(ImportJobLog::class)) {
+            ImportJobLog::create([
+                'user_id' => Auth::id(),
                 'filename_original' => $originalFilename,
                 'total_filas' => $rows->count(),
                 'importadas' => $imported,
@@ -329,8 +436,35 @@ class AdministrativoAssignmentImportService
                 'errores' => $errors,
             ]);
         }
-        return compact('imported','skipped','errors');
+
+        return compact('imported', 'skipped', 'errors');
     }
 
     // parseFecha y norm ahora provienen del trait SharedAssignmentImport
+
+    private function parseMonto(mixed $raw): ?float
+    {
+        if ($raw === null) {
+            return null;
+        }
+
+        if (is_string($raw)) {
+            $raw = trim($raw);
+            if ($raw === '') {
+                return null;
+            }
+            $raw = str_replace([' ', ','], ['', '.'], $raw);
+        }
+
+        if (! is_numeric($raw)) {
+            return null;
+        }
+
+        $value = (float) $raw;
+        if ($value < 0) {
+            return null;
+        }
+
+        return round($value, 2);
+    }
 }

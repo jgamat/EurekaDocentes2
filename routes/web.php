@@ -5,8 +5,12 @@ use App\Http\Controllers\CredencialController;
 use Illuminate\Http\Request;
 
 Route::get('/', function () {
-    return view('welcome');
+    return redirect('/admin');
 });
+
+Route::get('/login', function () {
+    return redirect(route('filament.admin.auth.login'));
+})->name('login');
 
 
 Route::middleware(['web','auth'])->group(function() {

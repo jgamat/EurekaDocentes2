@@ -2,27 +2,28 @@
 
 namespace App\Filament\Pages;
 
+use App\Models\EntregaCredencialRow;
+use App\Models\Planilla;
 use App\Models\Proceso;
 use App\Models\ProcesoFecha;
 use App\Models\Tipo;
-use App\Models\Planilla;
+use App\Support\CurrentContext;
+use App\Support\Traits\UsesGlobalContext;
+use BezhanSalleh\FilamentShield\Traits\HasPageShield;
+use Filament\Actions\Action;
+use Filament\Actions\Action as RowAction;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Forms\Components\Select;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Schemas\Schema; // header action
 use Filament\Tables;
+use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
-use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Actions\Action as RowAction;
-use Filament\Actions\Action; // header action
-use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use BezhanSalleh\FilamentShield\Traits\HasPageShield;
-use App\Support\CurrentContext;
-use App\Support\Traits\UsesGlobalContext;
 
 class EditarPlanilla extends Page implements Forms\Contracts\HasForms, HasTable
 {
@@ -30,11 +31,13 @@ class EditarPlanilla extends Page implements Forms\Contracts\HasForms, HasTable
     use HasPageShield;
     use UsesGlobalContext;
 
-    protected static ?string $navigationIcon = 'heroicon-o-document-text';
-    protected static ?string $navigationGroup = 'Planillas';
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-document-text';
+
+    protected static string|\UnitEnum|null $navigationGroup = 'Planillas';
+
     protected static ?string $title = 'Reimprimir / Editar Planilla';
 
-    protected static string $view = 'filament.pages.editar-planilla';
+    protected string $view = 'filament.pages.editar-planilla';
 
     public array $filters = [
         'proceso_id' => null,
@@ -67,7 +70,7 @@ class EditarPlanilla extends Page implements Forms\Contracts\HasForms, HasTable
         $this->form->fill($this->filters);
     }
 
-    public function form(Form $form): Form
+    public function form(Schema $form): Schema
     {
         return $form
             ->schema([
@@ -82,7 +85,10 @@ class EditarPlanilla extends Page implements Forms\Contracts\HasForms, HasTable
                     ->label('Fecha abierta')
                     ->options(function () {
                         $pid = $this->filters['proceso_id'] ?? null;
-                        if (!$pid) return [];
+                        if (! $pid) {
+                            return [];
+                        }
+
                         return ProcesoFecha::where('pro_iCodigo', $pid)
                             ->where('profec_iActivo', true)
                             ->orderBy('profec_dFecha')
@@ -106,7 +112,10 @@ class EditarPlanilla extends Page implements Forms\Contracts\HasForms, HasTable
                         $pid = $this->filters['proceso_id'] ?? null;
                         $fid = $this->filters['proceso_fecha_id'] ?? null;
                         $tid = $this->filters['tipo_id'] ?? null;
-                        if (!$pid || !$fid || !$tid) return [];
+                        if (! $pid || ! $fid || ! $tid) {
+                            return [];
+                        }
+
                         return Planilla::query()
                             ->where('pro_iCodigo', $pid)
                             ->where('profec_iCodigo', $fid)
@@ -115,6 +124,7 @@ class EditarPlanilla extends Page implements Forms\Contracts\HasForms, HasTable
                             ->get()
                             ->mapWithKeys(function ($p) {
                                 $label = 'N° '.$p->pla_iNumero.' (p. '.$p->pla_iPaginaInicio.'-'.$p->pla_IPaginaFin.')';
+
                                 return [$p->pla_id => $label];
                             })->toArray();
                     })
@@ -162,7 +172,9 @@ class EditarPlanilla extends Page implements Forms\Contracts\HasForms, HasTable
                     ->action(function ($record) {
                         $plaId = (int) ($this->filters['planilla_id'] ?? 0);
                         $tipoId = (int) ($this->filters['tipo_id'] ?? 0);
-                        if (!$plaId || !$tipoId) return;
+                        if (! $plaId || ! $tipoId) {
+                            return;
+                        }
 
                         // Detect type name to choose detail table
                         $tipoNombre = optional(Tipo::find($tipoId))->tipo_vcNombre ?? '';
@@ -233,10 +245,11 @@ class EditarPlanilla extends Page implements Forms\Contracts\HasForms, HasTable
         $plaId = (int) ($this->filters['planilla_id'] ?? 0);
         $tipoId = (int) ($this->filters['tipo_id'] ?? 0);
         $fechaId = (int) ($this->filters['proceso_fecha_id'] ?? 0);
-        if (!$plaId || !$tipoId || !$fechaId) {
+        if (! $plaId || ! $tipoId || ! $fechaId) {
             // Use a harmless subquery that yields no rows; include row_key to tolerate persisted sorts
             $empty = DB::query()->selectRaw('1 as orden, NULL as row_key, NULL as codigo, NULL as dni, NULL as nombres, NULL as local_nombre, NULL as cargo_nombre, 0 as monto')->whereRaw('1=0');
-            return \App\Models\EntregaCredencialRow::query()->fromSub($empty, 'u')->select('u.*');
+
+            return EntregaCredencialRow::query()->fromSub($empty, 'u')->select('u.*');
         }
 
         $tipoNombre = optional(Tipo::find($tipoId))->tipo_vcNombre ?? '';
@@ -248,7 +261,7 @@ class EditarPlanilla extends Page implements Forms\Contracts\HasForms, HasTable
                 ->join('docente as d', 'd.doc_vcCodigo', '=', 'pd.doc_vcCodigo')
                 ->join('procesodocente as prd', function ($j) use ($fechaId) {
                     $j->on('prd.doc_vcCodigo', '=', 'd.doc_vcCodigo')
-                      ->where('prd.profec_iCodigo', '=', $fechaId);
+                        ->where('prd.profec_iCodigo', '=', $fechaId);
                 })
                 ->join('locales as l', 'l.loc_iCodigo', '=', 'prd.loc_iCodigo')
                 ->join('localMaestro as lm', 'lm.locma_iCodigo', '=', 'l.locma_iCodigo')
@@ -263,7 +276,7 @@ class EditarPlanilla extends Page implements Forms\Contracts\HasForms, HasTable
                 ->join('administrativo as a', 'a.adm_vcDni', '=', 'pa.adm_vcDni')
                 ->join('procesoadministrativo as pra', function ($j) use ($fechaId) {
                     $j->on('pra.adm_vcDni', '=', 'a.adm_vcDni')
-                      ->where('pra.profec_iCodigo', '=', $fechaId);
+                        ->where('pra.profec_iCodigo', '=', $fechaId);
                 })
                 ->join('locales as l', 'l.loc_iCodigo', '=', 'pra.loc_iCodigo')
                 ->join('localMaestro as lm', 'lm.locma_iCodigo', '=', 'l.locma_iCodigo')
@@ -278,7 +291,7 @@ class EditarPlanilla extends Page implements Forms\Contracts\HasForms, HasTable
                 ->join('alumno as al', 'al.alu_vcCodigo', '=', 'pl.alu_vcCodigo')
                 ->join('procesoalumno as pral', function ($j) use ($fechaId) {
                     $j->on('pral.alu_vcCodigo', '=', 'al.alu_vcCodigo')
-                      ->where('pral.profec_iCodigo', '=', $fechaId);
+                        ->where('pral.profec_iCodigo', '=', $fechaId);
                 })
                 ->join('locales as l', 'l.loc_iCodigo', '=', 'pral.loc_iCodigo')
                 ->join('localMaestro as lm', 'lm.locma_iCodigo', '=', 'l.locma_iCodigo')
@@ -290,20 +303,22 @@ class EditarPlanilla extends Page implements Forms\Contracts\HasForms, HasTable
         }
 
         // Wrap raw builder as Eloquent builder using fromSub
-        return \App\Models\EntregaCredencialRow::query()->fromSub($q, 'u')->select('u.*');
+        return EntregaCredencialRow::query()->fromSub($q, 'u')->select('u.*');
     }
 
     public function reimprimirPlanilla(): void
     {
         $plaId = (int) ($this->filters['planilla_id'] ?? 0);
-        if (!$plaId) {
+        if (! $plaId) {
             Notification::make()->title('Seleccione una planilla')->warning()->send();
+
             return;
         }
         try {
             $pla = Planilla::find($plaId);
-            if (!$pla) {
+            if (! $pla) {
                 Notification::make()->title('Planilla no encontrada')->danger()->send();
+
                 return;
             }
 
@@ -311,6 +326,7 @@ class EditarPlanilla extends Page implements Forms\Contracts\HasForms, HasTable
             $rows = $this->getTableQuery()->clone()->get();
             if ($rows->isEmpty()) {
                 Notification::make()->title('Sin datos')->warning()->body('La planilla no tiene registros.')->send();
+
                 return;
             }
 
@@ -367,7 +383,9 @@ class EditarPlanilla extends Page implements Forms\Contracts\HasForms, HasTable
             $content = $pdf->output();
             $downloadName = 'reimpresion_planilla_'.$pla->pla_iNumero.'_'.now()->format('Ymd_His').'.pdf';
 
-            response()->streamDownload(function () use ($content) { echo $content; }, $downloadName, [
+            response()->streamDownload(function () use ($content) {
+                echo $content;
+            }, $downloadName, [
                 'Content-Type' => 'application/pdf',
                 'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
                 'Pragma' => 'no-cache',
@@ -385,16 +403,18 @@ class EditarPlanilla extends Page implements Forms\Contracts\HasForms, HasTable
             public_path('storage/templates_planilla'),
             public_path('storage/templates_planillas'),
         ];
-        $exts = ['png','jpg','jpeg'];
+        $exts = ['png', 'jpg', 'jpeg'];
         foreach ($dirs as $dir) {
             foreach ($exts as $ext) {
                 $path = rtrim($dir, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.$baseName.'.'.$ext;
                 if (is_file($path)) {
                     $rel = str_replace(public_path(), '', $path);
+
                     return asset(ltrim($rel, '/\\'));
                 }
             }
         }
+
         return null;
     }
 }

@@ -2,42 +2,46 @@
 
 namespace App\Filament\Pages;
 
+use App\Models\Administrativo;
+use App\Models\LocalCargo;
 use App\Models\Proceso;
+use App\Models\ProcesoAdministrativo;
 use App\Models\ProcesoFecha;
 use App\Support\CurrentContext;
 use App\Support\Traits\UsesGlobalContext;
-use Livewire\Attributes\On;
-use App\Models\Administrativo;
-use App\Models\ProcesoAdministrativo;
-use App\Models\LocalCargo;
+use BezhanSalleh\FilamentShield\Traits\HasPageShield;
+use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
-use Filament\Forms\Form;
 use Filament\Notifications\Notification;
-use Filament\Actions\Action;
 use Filament\Pages\Page;
+use Filament\Schemas\Schema;
 use Illuminate\Support\Collection;
-use BezhanSalleh\FilamentShield\Traits\HasPageShield;
+use Livewire\Attributes\On;
 
 class DesasignarAdministrativo extends Page implements HasForms
 {
-    use InteractsWithForms;
     use HasPageShield;
+    use InteractsWithForms;
     use UsesGlobalContext;
 
-    protected static ?string $navigationIcon = 'heroicon-o-user-minus';
-    protected static string $view = 'filament.pages.desasignar-administrativo';
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-user-minus';
+
+    protected string $view = 'filament.pages.desasignar-administrativo';
+
     protected static ?string $navigationLabel = 'Desasignar Administrativo';
-    protected static ?string $navigationGroup = 'Administrativos';
+
+    protected static string|\UnitEnum|null $navigationGroup = 'Administrativos';
 
     public ?array $data = [];
+
     // Mantener la asignación encontrada explícitamente para que Blade la muestre sin depender de property virtual
     public ?ProcesoAdministrativo $asignacionActual = null;
 
     public function mount(): void
     {
-        $this->fillContextDefaults(['proceso_id','proceso_fecha_id']);
+        $this->fillContextDefaults(['proceso_id', 'proceso_fecha_id']);
         // Hidratar explícitamente los campos ocultos para que el placeholder de fecha funcione.
         $ctx = app(CurrentContext::class);
         $this->form?->fill([
@@ -49,7 +53,7 @@ class DesasignarAdministrativo extends Page implements HasForms
     #[On('context-changed')]
     public function onContextChanged(): void
     {
-        $this->applyContextFromGlobal(['proceso_id','proceso_fecha_id'], ['administrativo_dni'], 'Se aplicó la Fecha y Proceso globales y se reinició la búsqueda de administrativo.');
+        $this->applyContextFromGlobal(['proceso_id', 'proceso_fecha_id'], ['administrativo_dni'], 'Se aplicó la Fecha y Proceso globales y se reinició la búsqueda de administrativo.');
     }
 
     protected function ensureContextIntegrity(): void
@@ -57,13 +61,18 @@ class DesasignarAdministrativo extends Page implements HasForms
         $state = $this->form?->getState() ?? [];
         $ctx = app(CurrentContext::class);
         $payload = [];
-        if (empty($state['proceso_id'])) { $payload['proceso_id'] = $ctx->procesoId(); }
-        if (empty($state['proceso_fecha_id'])) { $payload['proceso_fecha_id'] = $ctx->fechaId(); }
-        if (!empty($payload)) { $this->form?->fill($payload); }
+        if (empty($state['proceso_id'])) {
+            $payload['proceso_id'] = $ctx->procesoId();
+        }
+        if (empty($state['proceso_fecha_id'])) {
+            $payload['proceso_fecha_id'] = $ctx->fechaId();
+        }
+        if (! empty($payload)) {
+            $this->form?->fill($payload);
+        }
     }
 
-
-    public function form(Form $form): Form
+    public function form(Schema $form): Schema
     {
         return $form
             ->schema([
@@ -86,7 +95,10 @@ class DesasignarAdministrativo extends Page implements HasForms
                     ->label('2. Seleccione la Fecha Activa')
                     ->options(function (callable $get): Collection {
                         $procesoId = $get('proceso_id');
-                        if (!$procesoId) return collect();
+                        if (! $procesoId) {
+                            return collect();
+                        }
+
                         return ProcesoFecha::where('pro_iCodigo', $procesoId)
                             ->where('profec_iActivo', true)
                             ->pluck('profec_dFecha', 'profec_iCodigo');
@@ -106,7 +118,10 @@ class DesasignarAdministrativo extends Page implements HasForms
                     ->placeholder('Escribe nombre, DNI o código (min 2 caracteres)')
                     ->helperText('Debe existir una asignación activa en la fecha global para mostrar detalles.')
                     ->getSearchResultsUsing(function (string $search) {
-                        if (strlen($search) < 2) return [];
+                        if (strlen($search) < 2) {
+                            return [];
+                        }
+
                         return Administrativo::query()
                             ->where(function ($query) use ($search) {
                                 $query->where('adm_vcNombres', 'like', "%{$search}%")
@@ -115,7 +130,7 @@ class DesasignarAdministrativo extends Page implements HasForms
                             })
                             ->limit(10)
                             ->get()
-                            ->mapWithKeys(fn($adm) => [
+                            ->mapWithKeys(fn ($adm) => [
                                 $adm->adm_vcDni => "{$adm->adm_vcNombres} - {$adm->adm_vcDni} - {$adm->adm_vcCodigo}",
                             ])
                             ->toArray();
@@ -128,12 +143,12 @@ class DesasignarAdministrativo extends Page implements HasForms
                         // Si hay fecha seleccionada y se eligió un administrativo, valida si existe asignación
                         $fechaId = $get('proceso_fecha_id');
                         if ($fechaId && $state) {
-                            $asignacion = ProcesoAdministrativo::with(['administrativo','local.localesMaestro','experienciaAdmision.maestro'])
+                            $asignacion = ProcesoAdministrativo::with(['administrativo', 'local.localesMaestro', 'experienciaAdmision.maestro'])
                                 ->where('adm_vcDni', $state)
                                 ->where('profec_iCodigo', $fechaId)
                                 ->where('proadm_iAsignacion', 1)
                                 ->first();
-                            if (!$asignacion) {
+                            if (! $asignacion) {
                                 $this->asignacionActual = null;
                                 Notification::make()
                                     ->title('No asignado')
@@ -157,24 +172,26 @@ class DesasignarAdministrativo extends Page implements HasForms
     public function desasignarAdministrativo()
     {
         $asignacion = $this->asignacionActual;
-        if (!$asignacion) {
+        if (! $asignacion) {
             Notification::make()->title('No asignado')->body('El administrativo no está asignado en esta fecha.')->danger()->send();
+
             return;
         }
         $user = auth()->user();
         $esPlanilla = $user && method_exists($user, 'hasRole') ? $user->hasRole('Planilla') : false;
-        if ($asignacion->user_id !== auth()->id() && !$esPlanilla) {
+        if ($asignacion->user_id !== auth()->id() && ! $esPlanilla) {
             Notification::make()
                 ->title('No autorizado')
                 ->body('Solo el usuario que asignó o un usuario con rol Planilla puede desasignar.')
                 ->danger()
                 ->send();
+
             return;
         }
-    // Guardar IDs previos para refrescar tarjetas luego
-    $procesoFechaId = $asignacion->profec_iCodigo;
-    $localIdAnterior = $asignacion->loc_iCodigo;
-    $expAdmIdAnterior = $asignacion->expadm_iCodigo;
+        // Guardar IDs previos para refrescar tarjetas luego
+        $procesoFechaId = $asignacion->profec_iCodigo;
+        $localIdAnterior = $asignacion->loc_iCodigo;
+        $expAdmIdAnterior = $asignacion->expadm_iCodigo;
 
         $localCargo = LocalCargo::where('loc_iCodigo', $asignacion->loc_iCodigo ?? 0)
             ->where('expadm_iCodigo', $asignacion->expadm_iCodigo ?? 0)

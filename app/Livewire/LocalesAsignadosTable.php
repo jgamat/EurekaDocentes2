@@ -3,12 +3,10 @@
 namespace App\Livewire;
 
 use App\Models\ProcesoFecha;
+use Filament\Actions\DetachAction;
 use Filament\Forms\Concerns\InteractsWithForms;
-use Filament\Forms\Contracts\HasForms;
-use Filament\Tables\Actions\DetachAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
-use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
 use Livewire\Attributes\On; // <-- Importante para escuchar eventos
 use Livewire\Component;
@@ -31,7 +29,7 @@ class LocalesAsignadosTable extends Component
     {
         return $table
             ->query(
-                
+
                 $this->fecha ? $this->fecha->localesMaestro() : LocalesMaestro::query()->whereRaw('1 = 0') // Si no hay fecha, no muestra nada
             )
             ->heading('Locales Ya Asignados')
@@ -51,4 +49,3 @@ class LocalesAsignadosTable extends Component
         return view('livewire.locales-asignados-table');
     }
 }
-

@@ -13,11 +13,13 @@ class DocenteAssignmentRow
         public ?string $localNombre = null,
         public ?string $fechaOriginal = null,
         public ?string $fechaISO = null,
+        public ?float $monto = null,
+        public ?string $montoEstado = null,
         public array $errors = [],
         public array $warnings = [],
         public bool $valid = false,
-    // docentePk: se usa doc_vcCodigo (string) como identificador lógico en asignaciones
-    public ?string $docentePk = null,
+        // docentePk: se usa doc_vcCodigo (string) como identificador lógico en asignaciones
+        public ?string $docentePk = null,
         public ?int $cargoId = null,
         // localId: SIEMPRE debe ser loc_iCodigo (instancia por fecha). Si aún no existe se deja null hasta import().
         public ?int $localId = null,

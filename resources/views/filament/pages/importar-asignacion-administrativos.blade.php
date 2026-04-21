@@ -29,7 +29,7 @@
 				<div class="flex flex-wrap items-end gap-4 text-sm mt-3 mb-2">
 					<div>
 						<label class="block text-xs font-medium mb-1">Buscar</label>
-						<input x-model.debounce.300ms="q" type="text" class="border rounded px-2 py-1 text-xs bg-white dark:bg-gray-900" placeholder="Código / DNI / Nombre / Cargo / Local">
+						<input x-model.debounce.300ms="q" type="text" class="border rounded px-2 py-1 text-xs bg-white dark:bg-gray-900" placeholder="Código / DNI / Nombre / Cargo / Local / Monto">
 					</div>
 					<label class="inline-flex items-center gap-2 text-xs">
 						<input type="checkbox" x-model="onlyErrors"> <span>Solo errores</span>
@@ -59,6 +59,8 @@
 							<th class="px-2 py-1">Cargo</th>
 							<th class="px-2 py-1">Local</th>
 							<th class="px-2 py-1">Fecha</th>
+							<th class="px-2 py-1">Monto</th>
+							<th class="px-2 py-1">Estado monto</th>
 							<th class="px-2 py-1 w-64">Errores</th>
 							<th class="px-2 py-1 w-64">Warnings</th>
 							<th class="px-2 py-1">Estado</th>
@@ -74,6 +76,12 @@
 								<td class="px-2 py-1" x-text="r.cargo"></td>
 								<td class="px-2 py-1" x-text="r.local"></td>
 								<td class="px-2 py-1" x-text="r.fecha"></td>
+								<td class="px-2 py-1" x-text="r.monto ?? ''"></td>
+								<td class="px-2 py-1">
+									<span x-show="r.monto_estado === 'Se aplicará' || r.monto_estado === 'Se aplicará al crear'" class="px-2 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-800 dark:text-green-200" x-text="r.monto_estado"></span>
+									<span x-show="r.monto_estado === 'No se aplicará'" class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200" x-text="r.monto_estado"></span>
+									<span x-show="r.monto_estado === 'Sin monto' || !r.monto_estado" class="px-2 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200" x-text="r.monto_estado || 'Sin monto'"></span>
+								</td>
 								<td class="px-2 py-1 text-[11px] whitespace-pre-wrap" x-text="!r.valid && r.errores ? r.errores.join(' | ') : ''"></td>
 								<td class="px-2 py-1 text-[11px] whitespace-pre-wrap" x-text="r.valid && r.warnings ? r.warnings.join(' | ') : ''"></td>
 								<td class="px-2 py-1">
@@ -83,7 +91,7 @@
 							</tr>
 							</template>
 							<tr x-show="filtered().length===0">
-								<td colspan="10" class="px-2 py-4 text-center text-sm text-gray-500">Sin resultados (ajuste filtros o búsqueda)</td>
+								<td colspan="12" class="px-2 py-4 text-center text-sm text-gray-500">Sin resultados (ajuste filtros o búsqueda)</td>
 							</tr>
 						</tbody>
 					</table>
@@ -114,7 +122,7 @@
 						let data = this.rows;
 						const qUp = this.q.trim().toUpperCase();
 						if(qUp){
-							data = data.filter(r => [r.codigo, r.dni, r.nombres, r.cargo, r.local].some(v => (v||'').toString().toUpperCase().includes(qUp)));
+							data = data.filter(r => [r.codigo, r.dni, r.nombres, r.cargo, r.local, r.monto].some(v => (v||'').toString().toUpperCase().includes(qUp)));
 						}
 						if(this.onlyErrors){
 							data = data.filter(r => r.errores && r.errores.length > 0);
