@@ -17,7 +17,6 @@ use Filament\Tables;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class ListarLocalesDocentes extends Page implements Forms\Contracts\HasForms, Tables\Contracts\HasTable
@@ -81,22 +80,6 @@ class ListarLocalesDocentes extends Page implements Forms\Contracts\HasForms, Ta
                     'onclick' => 'window.print()',
                 ]),
         ];
-    }
-
-    // Control de acceso explícito (compatibilidad con Filament Shield si aún no se ha generado el permiso)
-    public static function canAccess(): bool
-    {
-        $user = Auth::user();
-        if (! $user) {
-            return false;
-        }
-
-        return $user->hasRole('super_admin') || $user->can('page_ListarLocalesDocentes');
-    }
-
-    public static function shouldRegisterNavigation(): bool
-    {
-        return static::canAccess();
     }
 
     public function form(Schema $form): Schema

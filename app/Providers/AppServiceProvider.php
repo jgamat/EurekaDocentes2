@@ -2,13 +2,16 @@
 
 namespace App\Providers;
 
+use App\Models\AuthenticationLog;
 use App\Models\User;
 use App\Policies\ActivityPolicy;
 use App\Support\CurrentContext;
 use BezhanSalleh\FilamentShield\FilamentShield;
 use Filament\Tables\Table;
+use Illuminate\Auth\Events\Logout;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
@@ -36,6 +39,8 @@ class AppServiceProvider extends ServiceProvider
         $this->configureModels();
 
         $this->configureFilament();
+
+        $this->configureAuthenticationLogListeners();
 
         // Share current context with all views (only in HTTP requests to avoid CLI/DB boot errors)
         if (! $this->app->runningInConsole()) {
@@ -82,5 +87,27 @@ class AppServiceProvider extends ServiceProvider
         // FilamentShield::prohibitDestructiveCommands($this->app->environment('production'));
 
         Table::configureUsing(fn (Table $table) => $table->paginationPageOptions([10, 25, 50]));
+    }
+
+    private function configureAuthenticationLogListeners(): void
+    {
+        Event::listen(Logout::class, function (Logout $event): void {
+            $user = $event->user;
+
+            if (! $user) {
+                return;
+            }
+
+            AuthenticationLog::query()
+                ->where('authenticatable_type', $user::class)
+                ->where('authenticatable_id', (int) $user->getAuthIdentifier())
+                ->whereNull('logout_at')
+                ->where('login_successful', true)
+                ->latest('login_at')
+                ->limit(1)
+                ->update([
+                    'logout_at' => now(),
+                ]);
+        });
     }
 }

@@ -2,11 +2,13 @@
 
 namespace App\Filament\Pages\Auth;
 
+use App\Models\AuthenticationLog;
 use Filament\Auth\Http\Responses\Contracts\LoginResponse as FilamentLoginResponse;
 use Filament\Auth\Pages\Login as BaseLogin;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Schemas\Schema;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 
 class Login extends BaseLogin
@@ -105,7 +107,21 @@ class Login extends BaseLogin
 
         $response = parent::authenticate();
 
-        if (auth()->check()) {
+        if (Auth::check()) {
+            $user = Auth::user();
+
+            if ($user !== null) {
+                AuthenticationLog::query()->create([
+                    'authenticatable_type' => $user::class,
+                    'authenticatable_id' => (int) $user->getAuthIdentifier(),
+                    'ip_address' => request()->ip(),
+                    'user_agent' => request()->userAgent(),
+                    'login_at' => now(),
+                    'login_successful' => true,
+                    'cleared_by_user' => false,
+                ]);
+            }
+
             RateLimiter::clear($this->failureKey());
             session()->forget('login_captcha');
         } else {

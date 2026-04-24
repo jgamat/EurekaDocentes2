@@ -9,6 +9,8 @@ class AuthenticationLog extends Model
 {
     protected $table = 'authentication_log';
 
+    public $timestamps = false;
+
     protected $fillable = [
         'authenticatable_type',
         'authenticatable_id',
