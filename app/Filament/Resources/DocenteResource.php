@@ -34,7 +34,7 @@ class DocenteResource extends Resource
     {
         return $form
             ->schema([
-                Forms\Components\Grid::make(2)->schema([
+                Grid::make(2)->schema([
                     TextInput::make('doc_vcDni')
                         ->label('DNI')
                         ->required()

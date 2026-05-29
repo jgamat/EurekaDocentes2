@@ -141,6 +141,11 @@ class DesasignarDocente extends Page implements HasForms
                             ])
                             ->toArray();
                     })
+                    ->getOptionLabelUsing(function ($value): ?string {
+                        return Docente::where('doc_vcCodigo', $value)
+                            ->first()
+                            ?->nombre_completo;
+                    })
                     ->required(fn (callable $get) => filled($get('proceso_fecha_id')))
                     ->reactive()
                     ->afterStateUpdated(function ($state, callable $set, $livewire, callable $get) {

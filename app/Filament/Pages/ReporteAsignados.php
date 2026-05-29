@@ -551,6 +551,19 @@ class ReporteAsignados extends Page implements HasForms, HasTable
         $filename = 'reporte_asignados_'.$tipo.'_'.$now->format('Ymd_His').'.xlsx';
         $title = 'Lista del Personal '.ucfirst($tipo).' al '.$now->format('d/m/Y H:i:s');
 
+        activity('Reportes')
+            ->causedBy(auth()->user())
+            ->event('registrar descargar de reportedeasignados')
+            ->withChanges([
+                'attributes' => [
+                    'Tipo de Personal' => $tipo,
+                    'Fecha de Examen' => $fechaLabel,
+                    'Total de Registros Descargados' => count($exportData),
+                ],
+                'old' => [],
+            ])
+            ->log('Descargó el reporte de asignados de '.ucfirst($tipo));
+
         return Excel::download(new class($exportData, $title) implements FromCollection, ShouldAutoSize, WithEvents, WithHeadings, WithStyles
         {
             public function __construct(private Collection $rows, private string $title) {}

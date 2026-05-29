@@ -29,6 +29,8 @@ class User extends Authenticatable implements FilamentUser
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
+        'password_changed_at' => 'datetime',
+        'requires_password_change' => 'boolean',
     ];
 
     public function canAccessPanel(Panel $panel): bool

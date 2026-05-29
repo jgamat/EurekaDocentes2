@@ -135,6 +135,11 @@ class DesasignarAdministrativo extends Page implements HasForms
                             ])
                             ->toArray();
                     })
+                    ->getOptionLabelUsing(function ($value): ?string {
+                        return Administrativo::where('adm_vcDni', $value)
+                            ->first()
+                            ?->adm_vcNombres;
+                    })
                     ->required(fn (callable $get) => filled($get('proceso_fecha_id')))
                     ->reactive()
                     ->afterStateUpdated(function ($state, callable $get, $livewire) {

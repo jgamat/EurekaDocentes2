@@ -3,6 +3,7 @@
 namespace App\Providers\Filament;
 
 use App\Filament\Pages\Auth\Login as CustomLogin;
+use App\Http\Middleware\EnsurePasswordNotExpired;
 use App\Http\Middleware\LoadContext;
 use App\Http\Middleware\RateLimitLogin;
 use App\Http\Middleware\SetPanelLocale;
@@ -12,6 +13,7 @@ use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Navigation\NavigationGroup;
+use Filament\Navigation\NavigationItem;
 use Filament\Pages;
 use Filament\Panel;
 use Filament\PanelProvider;
@@ -37,6 +39,7 @@ class AdminPanelProvider extends PanelProvider
             ->path('admin')
             ->viteTheme('resources/css/filament/admin/theme.css')
             ->passwordReset()
+            ->databaseNotifications()
             ->login(CustomLogin::class)
             ->colors([
                 'primary' => Color::Amber,
@@ -75,6 +78,14 @@ class AdminPanelProvider extends PanelProvider
                     ->collapsed(false),
 
             ])
+            ->navigationItems([
+                NavigationItem::make('Log de Errores')
+                    ->url(fn (): string => route('log-viewer.index'))
+                    ->icon('heroicon-o-bug-ant')
+                    ->group('Reportes')
+                    ->sort(100),
+                // ->visible(fn (): bool => auth()->user()?->can('view_logs')) // Opcional si hay roles locales
+            ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([
                 Widgets\AccountWidget::class,
@@ -103,7 +114,7 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
-
+                EnsurePasswordNotExpired::class,
             ])
             ->viteTheme('resources/css/filament/admin/theme.css');
     }

@@ -29,7 +29,7 @@ class AlumnoResource extends Resource
     {
         return $form
             ->schema([
-                Forms\Components\Grid::make(2)->schema([
+                Grid::make(2)->schema([
                     TextInput::make('alu_vcDni')
                         ->label('DNI')
                         ->required()

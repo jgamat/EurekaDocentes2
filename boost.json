@@ -1,6 +1,7 @@
 {
     "agents": [
-        "copilot"
+        "copilot",
+        "antigravity"
     ],
     "guidelines": true,
     "mcp": true,
@@ -9,6 +10,7 @@
     "skills": [
         "laravel-best-practices",
         "pest-testing",
-        "tailwindcss-development"
+        "tailwindcss-development",
+        "laravel-filament"
     ]
 }
