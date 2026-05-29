@@ -2,8 +2,8 @@
 
 namespace App\Policies;
 
-use App\Models\User;
 use App\Models\Alumno;
+use App\Models\User;
 use Illuminate\Auth\Access\HandlesAuthorization;
 
 class AlumnoPolicy
@@ -11,11 +11,25 @@ class AlumnoPolicy
     use HandlesAuthorization;
 
     /**
+     * Accept both legacy permission keys and Shield v4 keys.
+     */
+    private function canAny(User $user, array $permissions): bool
+    {
+        foreach ($permissions as $permission) {
+            if ($user->can($permission)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Determine whether the user can view any models.
      */
     public function viewAny(User $user): bool
     {
-        return $user->can('view_any_alumno');
+        return $this->canAny($user, ['view_any_alumno', 'ViewAny:Alumno']);
     }
 
     /**
@@ -23,7 +37,7 @@ class AlumnoPolicy
      */
     public function view(User $user, Alumno $alumno): bool
     {
-        return $user->can('view_alumno');
+        return $this->canAny($user, ['view_alumno', 'View:Alumno']);
     }
 
     /**
@@ -31,7 +45,7 @@ class AlumnoPolicy
      */
     public function create(User $user): bool
     {
-        return $user->can('create_alumno');
+        return $this->canAny($user, ['create_alumno', 'Create:Alumno']);
     }
 
     /**
@@ -39,7 +53,7 @@ class AlumnoPolicy
      */
     public function update(User $user, Alumno $alumno): bool
     {
-        return $user->can('update_alumno');
+        return $this->canAny($user, ['update_alumno', 'Update:Alumno']);
     }
 
     /**
@@ -47,7 +61,7 @@ class AlumnoPolicy
      */
     public function delete(User $user, Alumno $alumno): bool
     {
-        return $user->can('delete_alumno');
+        return $this->canAny($user, ['delete_alumno', 'Delete:Alumno']);
     }
 
     /**
@@ -55,7 +69,7 @@ class AlumnoPolicy
      */
     public function deleteAny(User $user): bool
     {
-        return $user->can('delete_any_alumno');
+        return $this->canAny($user, ['delete_any_alumno', 'DeleteAny:Alumno']);
     }
 
     /**
@@ -63,7 +77,7 @@ class AlumnoPolicy
      */
     public function forceDelete(User $user, Alumno $alumno): bool
     {
-        return $user->can('force_delete_alumno');
+        return $this->canAny($user, ['force_delete_alumno', 'ForceDelete:Alumno']);
     }
 
     /**
@@ -71,7 +85,7 @@ class AlumnoPolicy
      */
     public function forceDeleteAny(User $user): bool
     {
-        return $user->can('force_delete_any_alumno');
+        return $this->canAny($user, ['force_delete_any_alumno', 'ForceDeleteAny:Alumno']);
     }
 
     /**
@@ -79,7 +93,7 @@ class AlumnoPolicy
      */
     public function restore(User $user, Alumno $alumno): bool
     {
-        return $user->can('restore_alumno');
+        return $this->canAny($user, ['restore_alumno', 'Restore:Alumno']);
     }
 
     /**
@@ -87,7 +101,7 @@ class AlumnoPolicy
      */
     public function restoreAny(User $user): bool
     {
-        return $user->can('restore_any_alumno');
+        return $this->canAny($user, ['restore_any_alumno', 'RestoreAny:Alumno']);
     }
 
     /**
@@ -95,7 +109,7 @@ class AlumnoPolicy
      */
     public function replicate(User $user, Alumno $alumno): bool
     {
-        return $user->can('replicate_alumno');
+        return $this->canAny($user, ['replicate_alumno', 'Replicate:Alumno']);
     }
 
     /**
@@ -103,6 +117,6 @@ class AlumnoPolicy
      */
     public function reorder(User $user): bool
     {
-        return $user->can('reorder_alumno');
+        return $this->canAny($user, ['reorder_alumno', 'Reorder:Alumno']);
     }
 }
